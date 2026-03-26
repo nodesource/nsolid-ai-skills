@@ -1,5 +1,6 @@
 ---
-description: Sub-skill to analyze vulnerabilities using NSolid MCP
+name: vulnerability-analysis
+description: Analyze live runtime vulnerabilities across all connected processes using NSolid MCP
 ---
 
 # NodeSource Vulnerability Analysis Skill

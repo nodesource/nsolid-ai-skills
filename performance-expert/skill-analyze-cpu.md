@@ -1,4 +1,5 @@
 ---
+name: cpu-analysis
 description: Identify high CPU processes and profile them using NSolid Console MCP
 ---
 
@@ -11,9 +12,10 @@ Find the highest CPU-consuming process and successfully capture and summarize a 
 <instructions>
 Follow these precise steps:
 
-1. **Discover Apps & Agents**: 
-   - Call `global-filter` to verify exact app names. 
-   - Call `information-dashboard` to list currently connected agents, noting their `id`.
+1. **Discover Connected Agents**:
+   - Call `information-dashboard` (no parameters) to list all currently connected agents.
+   - Note each agent's `id`, `app` name, and `hostname`. These are the values you will use in all subsequent tool calls.
+   - ⚠️ Do NOT call `global-filter` for discovery — it returns tens of thousands of tokens and will fill the context window.
 
 2. **Find the Bottleneck**: 
    - Call `metrics-historic` to query the `cpuUserPercent` and `cpuSystemPercent` fields (`start: "5m"`).
@@ -46,6 +48,8 @@ Follow these precise steps:
 </instructions>
 
 <guardrails>
+- **NEVER call `global-filter`** as a discovery step. It returns ~18,000 tokens and will destroy the context window. Use `information-dashboard` only.
 - If you do not wait the required `duration`, the profiler will fail or you will waste tokens polling empty states.
 - Never download the raw `asset` tool for CPU profiles; always use `asset-summary`.
+- If the user mentions a specific app name in their message, skip step 1 entirely and go straight to `metrics-historic` filtering by that app name.
 </guardrails>

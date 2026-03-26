@@ -1,4 +1,5 @@
 ---
+name: memory-leak-hunter
 description: Advanced Multi-Phase Memory Leak Hunting Skill
 ---
 

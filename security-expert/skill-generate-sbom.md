@@ -1,4 +1,5 @@
 ---
+name: sbom-generation
 description: Generate a Software Bill of Materials (SBOM) for a registered application.
 ---
 
@@ -10,7 +11,8 @@ Retrieve a complete Software Bill of Materials (SBOM) for a specific application
 
 <instructions>
 1. **Identify Target Application**:
-   - Determine the specific `app` name you need the SBOM for. If the app name is unknown, use `global-filter` to retrieve a list of active applications.
+   - Determine the specific `app` name you need the SBOM for. If the app name is unknown, call `information-dashboard` (no parameters) to list all connected agents and their `app` names.
+   - ⚠️ Do NOT use `global-filter` — it returns ~18,000 tokens and is wasteful for a simple app name lookup.
 
 2. **Determine Format Requirement**:
    - Determine if the user needs the SBOM in **SPDX XML** (industry compliance standard) or **JSON** (for programmatic analysis).

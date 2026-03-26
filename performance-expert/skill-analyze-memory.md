@@ -1,4 +1,5 @@
 ---
+name: memory-analysis
 description: Identify memory leaks and high heap usage using NSolid Console MCP
 ---
 

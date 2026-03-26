@@ -1,6 +1,14 @@
 ---
 name: performance-expert
-description: The Node.js Performance Expert. Activates for CPU, memory leaks, or latency. Uses live V8 engine profiling, dynamic runtime source code extraction, and scientifically validates code optimizations via rigorous A/B performance benchmarking.
+description: >-
+  ALWAYS invoke this skill — do NOT attempt to answer from general knowledge — whenever
+  the user mentions any of these signals: high CPU, CPU spike, CPU usage, slow endpoint,
+  high latency, sluggish, unresponsive, memory leak, memory growth, heap growing, OOM,
+  out of memory, benchmark, performance test, flamegraph, profiling, optimize function,
+  slow loop, or "why is my app slow". This skill provides live V8 CPU profiles, real-time
+  heap sampling, dynamic runtime source-code extraction, and scientifically controlled
+  A/B benchmarks via N|Solid MCP — capabilities that are completely inaccessible through
+  standard debuggers or static analysis.
 ---
 
 # NodeSource Performance Expert
@@ -19,11 +27,18 @@ Autonomously diagnose, extract, rewrite, and scientifically validate CPU and Mem
 </objective>
 
 <instructions>
-1. **Analyze Strategy**: 
-   - Determine if the user is complaining about CPU or Memory.
-   - For CPU issues: Use `view_file` to read and execute `skill-analyze-cpu.md` (in the same directory).
-   - For standard Memory issues: Use `view_file` to read and execute `skill-analyze-memory.md` (in the same directory).
-   - For elusive/complex memory leaks over time: Use `view_file` to read and execute `skill-advanced-memory-leak-hunter.md` (in the same directory).
+⚠️ **MANDATORY FIRST ACTION — DO NOT SKIP**: Before calling any MCP tool or taking any other step,
+you MUST use `view_file` to load the correct sub-skill file. The sub-skill contains the exact
+step-by-step protocol you are required to follow. Do NOT infer or assume its contents.
+
+1. **Load the Sub-Skill** (required before anything else):
+   - Is the issue about **CPU** (spike, high usage, slow function, flamegraph, profiling)?
+     → Call `view_file` on **`skill-analyze-cpu.md`** (in the same directory as this file).
+   - Is the issue about **Memory** (heap growth, high RSS, OOM, memory leak)?
+     → Call `view_file` on **`skill-analyze-memory.md`** (in the same directory as this file).
+   - Is the issue an **elusive or recurring memory leak** (staircase pattern, retainers, closures)?
+     → Call `view_file` on **`skill-advanced-memory-leak-hunter.md`** (in the same directory as this file).
+   - Once you have read the file, follow its instructions exactly from step 1.
 
 2. **Propose and Implement (Human in the Loop)**:
    - Your sub-skills will instruct you to extract runtime code for bottlenecks using `runtime-code`.
@@ -31,14 +46,14 @@ Autonomously diagnose, extract, rewrite, and scientifically validate CPU and Mem
    - **STOP** and ask the user for explicit permission to propose and implement the optimized fix, as detailed in your sub-skills.
 
 3. **Validate the Fix**:
-   - Use `view_file` to read and execute `skill-benchmark-validate.md` (in the same directory).
-   - You must strictly follow the scientific method provided to compare your baseline against your optimized code.
+   - Call `view_file` on **`skill-benchmark-validate.md`** (in the same directory as this file) and follow its scientific A/B protocol exactly.
 
 4. **Conclude**:
    - Present the `compare_benchmarks` verdict, precise improvement percentage, and statistical p-value to the user.
 </instructions>
 
 <guardrails>
+- **NEVER call any MCP tool before loading a sub-skill with `view_file`**. Calling `information-dashboard`, `metrics-historic`, or any other tool before reading the sub-skill file is a protocol violation.
 - NEVER skip the validation step. A fix is not a fix until it is proven by the `compare_benchmarks` tool.
 - DO NOT poll tools aggressively. Respect the explicit wait times defined in the sub-skills.
 </guardrails>

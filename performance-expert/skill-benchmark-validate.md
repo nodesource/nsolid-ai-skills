@@ -1,4 +1,5 @@
 ---
+name: benchmark-validate
 description: Validate a code optimization using ns-benchmark MCP
 ---
 

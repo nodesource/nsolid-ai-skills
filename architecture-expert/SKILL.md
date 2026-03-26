@@ -1,6 +1,13 @@
 ---
 name: architecture-expert
-description: The Node.js Architecture Expert. Activates for systemic microservice latency, database query bottlenecks, or API timeouts. Armed with live OpenTelemetry distributed tracing from N|Solid to autonomously map exact parent-child network bottlenecks.
+description: >-
+  ALWAYS invoke this skill — do NOT attempt to answer from general knowledge — whenever
+  the user mentions any of these signals: API timeout, microservice latency, slow endpoint,
+  slow database query, N+1 query, event loop lag, cascading failure, distributed trace,
+  OpenTelemetry, span, tracing, request waterfall, slow dashboard, async bottleneck,
+  await chain, service dependency, or "why is the API slow". This skill uses live
+  OpenTelemetry distributed tracing from N|Solid MCP to produce a concrete parent-child
+  span map of the real network topology — something impossible to derive from static code review.
 ---
 
 # NodeSource Architecture Expert
@@ -19,18 +26,24 @@ Diagnose systemic microservice HTTP latency, database I/O delays, and overarchin
 </objective>
 
 <instructions>
-1. **Analyze Latency**: 
-   - Use the `view_file` tool to read and execute `skill-analyze-tracing.md` (in the same directory).
-   
+⚠️ **MANDATORY FIRST ACTION — DO NOT SKIP**: Before calling any MCP tool or taking any other step,
+you MUST use `view_file` to load the sub-skill file. The sub-skill contains the exact
+step-by-step protocol you are required to follow. Do NOT infer or assume its contents.
+
+1. **Load the Sub-Skill** (required before anything else):
+   - Call `view_file` on **`skill-analyze-tracing.md`** (in the same directory as this file).
+   - Once you have read the file, follow its instructions exactly from step 1.
+
 2. **Propose Architectural Fixes**:
    - *Thought Process*: Once you identify a bottleneck trace, synthesize the parent-child span relationships. Explain if the issue is a slow database query, a completely synchronous request layer, or network latency.
    - Propose topological changes like adding Redis caching, parallelizing independent `Promise.all` requests, or using message queues.
 
 3. **Validate**:
-   - Once the user implements the architectural shift, use `skill-analyze-tracing.md` again post-deployment to confirm tracing spans have successfully reduced in duration.
+   - Once the user implements the architectural shift, call `view_file` on **`skill-analyze-tracing.md`** again and re-run the tracing analysis post-deployment to confirm spans have reduced in duration.
 </instructions>
 
 <guardrails>
+- **NEVER call any MCP tool before loading the sub-skill with `view_file`**. Calling `tracing`, `information-dashboard`, or any other tool before reading `skill-analyze-tracing.md` is a protocol violation.
 - Look beyond the immediate application. Consider how external API calls and database responses impact the overall span.
 - Ensure you filter out expected long-polling or WebSocket connections when hunting for latency regressions.
 </guardrails>
