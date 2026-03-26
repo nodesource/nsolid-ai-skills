@@ -1,4 +1,5 @@
 ---
+name: Architecture Expert
 description: The Node.js Architecture Expert. Activates for systemic microservice latency, database query bottlenecks, or API timeouts. Armed with live OpenTelemetry distributed tracing from N|Solid to autonomously map exact parent-child network bottlenecks.
 ---
 
