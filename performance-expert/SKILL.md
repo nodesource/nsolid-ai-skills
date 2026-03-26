@@ -1,5 +1,5 @@
 ---
-name: Performance Expert
+name: performance-expert
 description: The Node.js Performance Expert. Activates for CPU, memory leaks, or latency. Uses live V8 engine profiling, dynamic runtime source code extraction, and scientifically validates code optimizations via rigorous A/B performance benchmarking.
 ---
 
