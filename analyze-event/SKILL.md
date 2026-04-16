@@ -52,8 +52,9 @@ found and what is still missing.
 
 ### 5. Always Write a Report
 1. Create the markdown report directly under the project-root `.nsolid/assets/`
-  directory using a descriptive filename such as
-  `.nsolid/assets/event-analysis-<eventName>.md`. Never create the report in
+  directory using an absolute filesystem path such as
+  `<workspace-root>/.nsolid/assets/event-analysis-<eventName>.md`. Never use
+  a bare filename like `nsolid-report-event.md`, never create the report in
   `/tmp`, and never create `.nsolid/` inside an `agents/` folder.
 2. Use this structure for the report body:
    ```markdown
@@ -75,10 +76,10 @@ found and what is still missing.
    ## Recommendation
    <most pragmatic next step>
    ```
-3. Register that existing file with the save helper so it appends the metadata
-  entry to `.nsolid/assets/reports-index.json`.
+3. Register that same absolute report path with the save helper so it appends
+  the metadata entry to `.nsolid/assets/reports-index.json`.
    ```
-  node "<skill-dir>/../save-report.cjs" event-analysis "Event Analysis Report — <event name>" .nsolid/assets/event-analysis-<eventName>.md
+  node "<skill-dir>/../save-report.cjs" event-analysis "Event Analysis Report — <event name>" "<workspace-root>/.nsolid/assets/event-analysis-<eventName>.md"
    ```
 4. Do not stop after pasting findings in chat. Always run the registration step
   and tell the user where the report was written.

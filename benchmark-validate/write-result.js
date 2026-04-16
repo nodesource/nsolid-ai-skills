@@ -21,7 +21,24 @@ function findWorkspaceRoot(startDir) {
     dir = path.dirname(dir);
   }
 
-  return startDir;
+  return null;
+}
+
+function resolveWorkspaceRoot() {
+  const candidates = [process.env.INIT_CWD, process.cwd(), path.resolve(__dirname)];
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    const workspaceRoot = findWorkspaceRoot(path.resolve(candidate));
+    if (workspaceRoot) {
+      return workspaceRoot;
+    }
+  }
+
+  return path.resolve(process.cwd());
 }
 
 const json = process.argv[2];
@@ -38,7 +55,7 @@ try {
   process.exit(1);
 }
 
-const workspaceRoot = findWorkspaceRoot(path.resolve(__dirname));
+const workspaceRoot = resolveWorkspaceRoot();
 const outputDir = path.join(workspaceRoot, '.nsolid', 'benchmarks');
 
 // Create .nsolid/benchmarks/ if it doesn't exist

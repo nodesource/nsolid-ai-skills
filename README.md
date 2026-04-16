@@ -83,7 +83,9 @@ node save-report.cjs <type> <title> <report-file>
 Output: updated `.nsolid/assets/reports-index.json`
 
 The report markdown itself must already exist in the project-root `.nsolid/assets/`
-directory before you call `save-report.cjs`. Do not create reports in `/tmp`.
+directory before you call `save-report.cjs`. Use an absolute path under the
+workspace root, not a bare filename relative to a skill folder. Do not create
+reports in `/tmp`.
 
 Benchmark result helpers also always write to the project-root `.nsolid/benchmarks/`
 directory, never beside a skill file or inside an `agents/` folder.

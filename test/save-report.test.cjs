@@ -20,6 +20,14 @@ function run (args, opts = {}) {
   })
 }
 
+function runWithScript (script, args, opts = {}) {
+  return spawnSync(process.execPath, [script, ...args], {
+    encoding: 'utf-8',
+    timeout: 10_000,
+    ...opts
+  })
+}
+
 function readIndex () {
   const indexPath = path.join(NSOLID_ASSETS, 'reports-index.json')
   if (!fs.existsSync(indexPath)) return []
@@ -237,4 +245,38 @@ test('preserves the existing report filename instead of generating a new one', a
     assert.strictEqual(entries[0].fileName, fileName)
     assert.ok(fs.existsSync(reportPath))
   })
+})
+
+test('prefers the caller workspace when installed under .agents/skills', () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'save-report-installed-'))
+  const installedDir = path.join(projectRoot, '.agents', 'skills')
+  const installedScript = path.join(installedDir, 'save-report.cjs')
+  const assetsDir = path.join(projectRoot, '.nsolid', 'assets')
+  const fileName = `cpu-analysis-installed-${Date.now()}.md`
+  const reportPath = path.join(assetsDir, fileName)
+
+  try {
+    fs.mkdirSync(assetsDir, { recursive: true })
+    fs.mkdirSync(installedDir, { recursive: true })
+    fs.copyFileSync(SCRIPT, installedScript)
+    fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"consumer-workspace"}\n')
+    fs.writeFileSync(path.join(installedDir, 'package.json'), '{"name":"installed-skills"}\n')
+    fs.writeFileSync(reportPath, '# CPU Analysis\n\n## Summary\n\nInstalled workspace report.\n')
+
+    const result = runWithScript(installedScript, ['cpu-analysis', 'Installed Report', path.join('.nsolid', 'assets', fileName)], {
+      cwd: projectRoot
+    })
+    assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
+
+    const indexPath = path.join(assetsDir, 'reports-index.json')
+    const entries = JSON.parse(fs.readFileSync(indexPath, 'utf-8'))
+    assert.strictEqual(entries.length, 1)
+    assert.strictEqual(entries[0].fileName, fileName)
+    assert.strictEqual(entries[0].title, 'Installed Report')
+
+    const nestedAssetsDir = path.join(installedDir, '.nsolid', 'assets')
+    assert.ok(!fs.existsSync(nestedAssetsDir), `Installed skill dir should not get reports: ${nestedAssetsDir}`)
+  } finally {
+    fs.rmSync(projectRoot, { recursive: true, force: true })
+  }
 })

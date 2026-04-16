@@ -89,8 +89,9 @@ you think in terms of deltas, allocations over time, and retained heap curves.
 
 ### Phase 6: Write a Report
 1. Create the markdown report directly under the project-root `.nsolid/assets/`
-   directory using a descriptive filename such as
-   `.nsolid/assets/memory-leak-hunt-<appName>.md`. Never create the report in
+   directory using an absolute filesystem path such as
+   `<workspace-root>/.nsolid/assets/memory-leak-hunt-<appName>.md`. Never use
+   a bare filename like `nsolid-report-leak.md`, never create the report in
    `/tmp`, and never create `.nsolid/` inside an `agents/` folder.
 2. Use this structure for the report body:
    ```markdown
@@ -128,10 +129,10 @@ you think in terms of deltas, allocations over time, and retained heap curves.
    - Baseline heap profile: `.nsolid/assets/heapprofile-<appName>-<baselineAssetIdPrefix>.heapprofile`
    - Peak heap profile: `.nsolid/assets/heapprofile-<appName>-<peakAssetIdPrefix>.heapprofile`
    ```
-2. Run the save-report script to register that existing markdown file in
+2. Run the save-report script to register that same absolute markdown path in
    `.nsolid/assets/reports-index.json`:
    ```
-   node "<skill-dir>/../save-report.cjs" memory-leak-hunt "Memory Leak Hunt Report — <appName>" .nsolid/assets/memory-leak-hunt-<appName>.md
+   node "<skill-dir>/../save-report.cjs" memory-leak-hunt "Memory Leak Hunt Report — <appName>" "<workspace-root>/.nsolid/assets/memory-leak-hunt-<appName>.md"
    ```
 3. The script prints the registered path. Tell the user that path and mention
    both baseline and peak heap profiles if you downloaded them.

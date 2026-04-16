@@ -12,7 +12,8 @@
 //   appName   — (Optional) Application name for the filename, defaults to "unknown"
 //
 // The script reads the console URL and service token from .vscode/settings.json
-// in the workspace root (walks up from its own location to find it).
+// in the workspace root. It prefers the caller's working tree and falls back to
+// the script location when needed.
 //
 // Output files:
 //   .nsolid/assets/<assetType>-<appName>-<assetIdPrefix>.<ext>
@@ -174,7 +175,28 @@ function findWorkspaceRoot (startDir) {
     }
     dir = path.dirname(dir)
   }
-  return startDir
+  return null
+}
+
+function resolveWorkspaceRoot () {
+  const candidates = [
+    process.env.INIT_CWD,
+    process.cwd(),
+    path.resolve(__dirname)
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue
+    }
+
+    const workspaceRoot = findWorkspaceRoot(path.resolve(candidate))
+    if (workspaceRoot) {
+      return workspaceRoot
+    }
+  }
+
+  return path.resolve(process.cwd())
 }
 
 function stripJsonComments (input) {
@@ -301,7 +323,7 @@ async function main () {
     process.exit(1)
   }
 
-  const workspaceRoot = findWorkspaceRoot(path.resolve(__dirname))
+  const workspaceRoot = resolveWorkspaceRoot()
   const { consoleUrl, token } = readSettings(workspaceRoot)
 
   const assetsDir = getAssetsDir(workspaceRoot)

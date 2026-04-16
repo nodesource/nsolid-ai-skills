@@ -141,8 +141,9 @@ says read-only, offline, or no-capture.
 
 ### 13. Write a Report
 1. Create the markdown report directly under the project-root `.nsolid/assets/`
-  directory using a descriptive filename such as
-  `.nsolid/assets/cpu-analysis-<appName>-<assetIdPrefix>.md`. Never create the
+  directory using an absolute filesystem path such as
+  `<workspace-root>/.nsolid/assets/cpu-analysis-<appName>-<assetIdPrefix>.md`.
+  Never use a bare filename like `nsolid-report-cpu.md`, never create the
   report in `/tmp`, and never create `.nsolid/` inside an `agents/` folder.
 2. Use this structure for the report body:
    ```markdown
@@ -174,10 +175,10 @@ says read-only, offline, or no-capture.
   - Asset summary ID: `<assetId>`
   - Full CPU profile: `<path if downloaded, otherwise 'not downloaded'>`
    ```
-3. Run the save-report script to register that existing markdown file in
+3. Run the save-report script to register that same absolute markdown path in
   `.nsolid/assets/reports-index.json`:
    ```
-  node "<skill-dir>/../save-report.cjs" cpu-analysis "CPU Analysis Report — <appName>" .nsolid/assets/cpu-analysis-<appName>-<assetIdPrefix>.md
+  node "<skill-dir>/../save-report.cjs" cpu-analysis "CPU Analysis Report — <appName>" "<workspace-root>/.nsolid/assets/cpu-analysis-<appName>-<assetIdPrefix>.md"
    ```
 4. The script prints the registered path. Tell the user the report path.
   Mention the local `.cpuprofile` path only if you downloaded it.

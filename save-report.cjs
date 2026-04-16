@@ -14,9 +14,9 @@
 //   report-file  — Path to an existing .md report file under the project-root
 //                  .nsolid/assets/ directory
 //
-// The script finds the workspace root by walking up from its own location,
-// looking for .vscode/settings.json or package.json (same strategy as
-// fetch-asset.cjs).
+// The script finds the workspace root by preferring the caller's working tree,
+// then falling back to its own location, looking for .vscode/settings.json or
+// package.json (same strategy as fetch-asset.cjs).
 //
 // Output:
 //   .nsolid/assets/<type>-<YYYY-MM-DDTHH-MM-SS>.md   — the report file
@@ -55,7 +55,28 @@ function findWorkspaceRoot (startDir) {
     }
     dir = path.dirname(dir)
   }
-  return startDir
+  return null
+}
+
+function resolveWorkspaceRoot () {
+  const candidates = [
+    process.env.INIT_CWD,
+    process.cwd(),
+    path.resolve(__dirname)
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue
+    }
+
+    const workspaceRoot = findWorkspaceRoot(path.resolve(candidate))
+    if (workspaceRoot) {
+      return workspaceRoot
+    }
+  }
+
+  return path.resolve(process.cwd())
 }
 
 // Mirrors ReportsHistoryService.extractSummary() from the VS Code extension
@@ -96,7 +117,7 @@ async function main () {
     process.exit(1)
   }
 
-  const workspaceRoot = findWorkspaceRoot(path.resolve(__dirname))
+  const workspaceRoot = resolveWorkspaceRoot()
   const nsolidDir = path.join(workspaceRoot, '.nsolid')
   const assetsDir = path.join(nsolidDir, 'assets')
   fs.mkdirSync(assetsDir, { recursive: true })

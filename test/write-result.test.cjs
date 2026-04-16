@@ -4,6 +4,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { spawnSync } = require('node:child_process')
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 
 const ROOT = path.resolve(__dirname, '..')
@@ -123,5 +124,36 @@ for (const script of WRITE_RESULT_SCRIPTS) {
       const nestedBenchmarksDir = path.join(nestedCwd, '.nsolid', 'benchmarks')
       assert.ok(!fs.existsSync(nestedBenchmarksDir), `Nested .nsolid directory should not exist: ${nestedBenchmarksDir}`)
     })
+  })
+
+  test(`${scriptLabel} prefers the caller workspace when installed under .agents/skills`, () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'write-result-installed-'))
+    const installedDir = path.join(projectRoot, '.agents', 'skills', path.basename(path.dirname(script)))
+    const installedScript = path.join(installedDir, path.basename(script))
+
+    try {
+      fs.mkdirSync(installedDir, { recursive: true })
+      fs.copyFileSync(script, installedScript)
+      fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"consumer-workspace"}\n')
+      fs.writeFileSync(path.join(projectRoot, '.agents', 'skills', 'package.json'), '{"name":"installed-skills"}\n')
+
+      const payload = JSON.stringify({
+        functionName: 'installed worker',
+        result: { opsSec: 42 }
+      })
+
+      const result = run(installedScript, [payload], projectRoot)
+      assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
+
+      const outputPath = result.stdout.trim()
+      const expectedDir = path.join(projectRoot, '.nsolid', 'benchmarks')
+      assert.ok(outputPath.startsWith(expectedDir + path.sep), `Unexpected output path: ${outputPath}`)
+      assert.ok(fs.existsSync(outputPath))
+
+      const nestedBenchmarksDir = path.join(projectRoot, '.agents', 'skills', '.nsolid', 'benchmarks')
+      assert.ok(!fs.existsSync(nestedBenchmarksDir), `Installed skill dir should not get benchmarks: ${nestedBenchmarksDir}`)
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true })
+    }
   })
 }

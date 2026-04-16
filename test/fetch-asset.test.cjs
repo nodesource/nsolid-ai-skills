@@ -5,6 +5,7 @@ const assert = require('node:assert/strict')
 const { spawnSync, spawn } = require('node:child_process')
 const http = require('node:http')
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 
 const SCRIPT = path.resolve(__dirname, '..', 'fetch-asset.cjs')
@@ -25,6 +26,29 @@ function run (args) {
 function runAsync (args, opts = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [SCRIPT, ...args], opts)
+    let stdout = ''
+    let stderr = ''
+    const timer = setTimeout(() => {
+      child.kill()
+      reject(new Error('child process timed out'))
+    }, 15_000)
+
+    child.stdout.on('data', d => { stdout += d.toString() })
+    child.stderr.on('data', d => { stderr += d.toString() })
+    child.on('close', code => {
+      clearTimeout(timer)
+      resolve({ status: code, stdout, stderr })
+    })
+    child.on('error', error => {
+      clearTimeout(timer)
+      reject(error)
+    })
+  })
+}
+
+function runScriptAsync (script, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [script, ...args], opts)
     let stdout = ''
     let stderr = ''
     const timer = setTimeout(() => {
@@ -315,4 +339,61 @@ test('exits with error when console returns non-200 status', async () => {
       )
     }
   )
+})
+
+test('prefers the caller workspace when installed under .agents/skills', async () => {
+  const assetId = 'test-installed-asset'
+  const assetContent = '{"type":"cpuprofile","nodes":[1]}'
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fetch-asset-installed-'))
+  const installedDir = path.join(projectRoot, '.agents', 'skills')
+  const installedScript = path.join(installedDir, 'fetch-asset.cjs')
+  const settingsDir = path.join(projectRoot, '.vscode')
+  const settingsPath = path.join(settingsDir, 'settings.json')
+  const assetsDir = path.join(projectRoot, '.nsolid', 'assets')
+  const expectedPath = path.join(assetsDir, 'cpuprofile-installed_app-test-ins.cpuprofile')
+
+  try {
+    fs.mkdirSync(installedDir, { recursive: true })
+    fs.mkdirSync(settingsDir, { recursive: true })
+    fs.copyFileSync(SCRIPT, installedScript)
+    fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"consumer-workspace"}\n')
+    fs.writeFileSync(path.join(installedDir, 'package.json'), '{"name":"installed-skills"}\n')
+
+    await withServer(
+      (req, res) => {
+        if (req.url === `/api/v3/asset/${assetId}`) {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(assetContent)
+          return
+        }
+
+        res.writeHead(404)
+        res.end()
+      },
+      async (port) => {
+        fs.writeFileSync(settingsPath, JSON.stringify({
+          'nsolid.apiBaseUrl': `http://127.0.0.1:${port}`,
+          'nsolid.authToken': 'test-token'
+        }))
+
+        const result = await runScriptAsync(installedScript, [assetId, 'cpuprofile', 'installed/app'], {
+          cwd: projectRoot
+        })
+        assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
+        assert.match(result.stdout, /Asset saved to:/)
+        assert.ok(fs.existsSync(expectedPath), `Expected file not found: ${expectedPath}`)
+
+        const indexPath = path.join(assetsDir, 'index.json')
+        const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8'))
+        const entry = index.find(record => record.assetId === assetId)
+        assert.ok(entry)
+        assert.strictEqual(entry.localPath, 'cpuprofile-installed_app-test-ins.cpuprofile')
+
+        const nestedAssetsDir = path.join(installedDir, '.nsolid', 'assets')
+        assert.ok(!fs.existsSync(nestedAssetsDir), `Installed skill dir should not get assets: ${nestedAssetsDir}`)
+      }
+    )
+  } finally {
+    fs.rmSync(projectRoot, { recursive: true, force: true })
+  }
 })

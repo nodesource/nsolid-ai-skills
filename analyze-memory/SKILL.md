@@ -97,10 +97,10 @@ when the current evidence is insufficient and the user wants live analysis.
 
 ### 10. Write a Report
 1. Create the markdown report directly under the project-root `.nsolid/assets/`
-  directory using a descriptive filename such as
-  `.nsolid/assets/memory-analysis-<appName>-<assetIdPrefix>.md`. Never create
-  the report in `/tmp`, and never create `.nsolid/` inside an `agents/`
-  folder.
+  directory using an absolute filesystem path such as
+  `<workspace-root>/.nsolid/assets/memory-analysis-<appName>-<assetIdPrefix>.md`.
+  Never use a bare filename like `nsolid-report-memory.md`, never create the
+  report in `/tmp`, and never create `.nsolid/` inside an `agents/` folder.
 2. Use this structure for the report body:
    ```markdown
    # Memory Analysis Report — <appName>
@@ -126,10 +126,10 @@ when the current evidence is insufficient and the user wants live analysis.
    ## Assets
   - Full heap data: `.nsolid/assets/heapprofile-<appName>-<assetIdPrefix>.heapprofile` (or `heapsnapshot-<appName>-<assetIdPrefix>.heapsnapshot`)
    ```
-3. Run the save-report script to register that existing markdown file in
+3. Run the save-report script to register that same absolute markdown path in
   `.nsolid/assets/reports-index.json`:
    ```
-  node "<skill-dir>/../save-report.cjs" memory-analysis "Memory Analysis Report — <appName>" .nsolid/assets/memory-analysis-<appName>-<assetIdPrefix>.md
+  node "<skill-dir>/../save-report.cjs" memory-analysis "Memory Analysis Report — <appName>" "<workspace-root>/.nsolid/assets/memory-analysis-<appName>-<assetIdPrefix>.md"
    ```
 4. The script prints the registered path. Tell the user the report path.
   Mention the local heap file path only if you downloaded it.

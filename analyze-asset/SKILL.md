@@ -66,9 +66,10 @@ has. Do not capture a new profile unless the user explicitly asks for that.
 
 ### 7. Write a Report
 1. Create the markdown report directly under the project-root `.nsolid/assets/`
-  directory using a descriptive filename such as
-  `.nsolid/assets/asset-analysis-<assetIdPrefix>.md`. Never create the report
-  in `/tmp`, and never create `.nsolid/` inside an `agents/` folder.
+  directory using an absolute filesystem path such as
+  `<workspace-root>/.nsolid/assets/asset-analysis-<assetIdPrefix>.md`.
+  Never use a bare filename like `nsolid-report-asset.md`, never create the
+  report in `/tmp`, and never create `.nsolid/` inside an `agents/` folder.
 2. Use this structure for the report body:
    ```markdown
    # Asset Analysis Report — <asset label>
@@ -91,10 +92,10 @@ has. Do not capture a new profile unless the user explicitly asks for that.
    ## Recommendation
    <most pragmatic next step>
    ```
-3. Register that existing file with the save helper so it appends the metadata
-  entry to `.nsolid/assets/reports-index.json`.
+3. Register that same absolute report path with the save helper so it appends
+  the metadata entry to `.nsolid/assets/reports-index.json`.
    ```
-  node "<skill-dir>/../save-report.cjs" asset-analysis "Asset Analysis Report — <asset label>" .nsolid/assets/asset-analysis-<assetIdPrefix>.md
+  node "<skill-dir>/../save-report.cjs" asset-analysis "Asset Analysis Report — <asset label>" "<workspace-root>/.nsolid/assets/asset-analysis-<assetIdPrefix>.md"
    ```
 4. This registration step is required. Do not leave the report only in the chat
   reply.
