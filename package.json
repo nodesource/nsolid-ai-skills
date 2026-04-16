@@ -1,0 +1,9 @@
+{
+  "name": "nsolid-ai-skills",
+  "version": "1.0.0",
+  "description": "Production-ready AI skills for N|Solid performance and security investigation",
+  "scripts": {
+    "test": "node --test test/*.test.cjs"
+  },
+  "license": "Apache-2.0"
+}

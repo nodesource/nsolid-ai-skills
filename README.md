@@ -1,38 +1,102 @@
-# NodeSource Unified AI Developer Ecosystem PoC
+# NodeSource AI Skills
 
-This repository contains a Proof of Concept (PoC) illustrating the theory of **Expert-Led "Roles" and "Skills"**. It transforms isolated Model Context Protocol (MCP) data into robust, automated investigation formulas used by actual NodeSource consultants.
+Production-ready AI skills that transform N|Solid MCP data into automated investigation workflows used by NodeSource consultants.
 
-## Best Practices: The Vercel `skills` CLI Architecture
-This repository is formatted to be fully compatible with the `npx skills@latest` CLI. By structuring the ecosystem into discrete feature folders with `SKILL.md` entry points, LLMs can autonomously traverse, download, and execute these capabilities globally without heavy configuration.
+## Installation
 
-Users can install any of these expert roles directly into their projects using:
+Install any skill into your project using the [Vercel Skills CLI](https://vercel.com/blog/agent-skills-explained-an-faq):
+
 ```bash
-npx skills@latest add <github-org>/<repo-name>/performance-expert
+npx skills@latest add NodeSource/nsolid-ai-skills/analyze-vulnerabilities
+npx skills@latest add NodeSource/nsolid-ai-skills/generate-sbom
+npx skills@latest add NodeSource/nsolid-ai-skills/analyze-cpu
+npx skills@latest add NodeSource/nsolid-ai-skills/analyze-memory
+npx skills@latest add NodeSource/nsolid-ai-skills/advanced-memory-leak-hunter
+npx skills@latest add NodeSource/nsolid-ai-skills/benchmark-run
+npx skills@latest add NodeSource/nsolid-ai-skills/benchmark-validate
+npx skills@latest add NodeSource/nsolid-ai-skills/analyze-tracing
 ```
 
-## The Roles Ecosystem
+Or manually copy the `<skill-name>/SKILL.md` file into your project's `.claude/skills/` directory.
 
-### 1. 🛡️ Security Expert (`security-expert/`)
-Identifies and resolves vulnerable packages and executes compliance audits.
-- **Entry Point**: `SKILL.md`
-- **Sub-skill**: `skill-analyze-vulnerabilities.md` — Guides the agent via `vulnerabilities` and `application-packages`.
-- **Sub-skill**: `skill-generate-sbom.md` — Automates SPDX/JSON compliance reports with the 180s-timeout server logic.
+## Skills
 
-### 2. ⚡ Performance Expert (`performance-expert/`)
-Diagnoses and resolves CPU spikes and memory leaks, extracting actual V8 runtime code, and generating statistically proven optimizations.
-- **Entry Point**: `SKILL.md`
-- **Sub-skill**: `skill-analyze-cpu.md` — CPU profiling with dynamic V8 code extraction and human-in-the-loop safeguards.
-- **Sub-skill**: `skill-analyze-memory.md` — Standard Heap sampling strategies for memory analysis.
-- **Sub-skill**: `skill-advanced-memory-leak-hunter.md` — Multi-phase leak hunting (baseline vs peak vs delta analysis).
-- **Sub-skill**: `skill-benchmark-validate.md` — Rigorously isolates external dependencies and executes A/B benchmarks to mathematically prove the performance delta.
+### Security
 
-### 3. 🏗️ Architecture Expert (`architecture-expert/`)
-Diagnoses end-to-end latency and microservice topology issues.
-- **Entry Point**: `SKILL.md`
-- **Sub-skill**: `skill-analyze-tracing.md` — Leverages OpenTelemetry HTTP tracing spans to find structural bottlenecks across an ecosystem.
+| Skill | Description |
+|-------|-------------|
+| **analyze-vulnerabilities** | Scans running production memory for actively-exploitable CVEs using live N|Solid data |
+| **generate-sbom** | Generates SPDX/JSON Software Bill of Materials from live running processes |
 
-## Usage & Proactive Triggers
-These skills are natively **Proactive**. The `SKILL.md` files contain explicit `<trigger_scenarios>` enabling your host AI Assistant (Claude Code, Cursor, Windsurf) to autonomously interject. 
+### Performance
 
-For example, if you type: *"My application feels sluggish today,"* the AI will automatically load the `performance-expert/SKILL.md` and offer to pull a live N|Solid profile natively.
-# nsolid-ai-skills
+| Skill | Description |
+|-------|-------------|
+| **analyze-cpu** | Captures V8 CPU profiles, extracts live source code, and identifies bottleneck functions |
+| **analyze-memory** | Diagnoses memory issues via real-time heap sampling and snapshot analysis |
+| **advanced-memory-leak-hunter** | Multi-phase baseline-vs-peak delta analysis for elusive memory leaks |
+| **benchmark-run** | Benchmarks a single Node.js function to measure throughput (ops/sec) using live V8 source or user-provided code |
+| **benchmark-validate** | Scientifically controlled A/B benchmarks with statistical validation (p-value, ops/sec) |
+
+### Architecture
+
+| Skill | Description |
+|-------|-------------|
+| **analyze-tracing** | Maps distributed OpenTelemetry spans to diagnose microservice latency and topology issues |
+
+## Scripts
+
+Helper scripts used internally by skills to bridge MCP data and the local filesystem.
+
+### fetch-asset.cjs
+
+Downloads a full N|Solid asset (CPU profile, heap snapshot, or heap sampling) from the console API and saves it to `.nsolid/assets/`. Skills invoke this after triggering a profile/snapshot so the file is available for local tooling (e.g. Chrome DevTools, VS Code memory profiler).
+
+```bash
+node fetch-asset.cjs <assetId> <assetType> [appName]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `assetId` | Asset ID returned by the MCP profile/snapshot/heap-sampling tool |
+| `assetType` | One of: `cpuprofile`, `heapprofile`, `heapsnapshot` |
+| `appName` | _(Optional)_ Application name used in the output path, defaults to `unknown` |
+
+Output: `.nsolid/assets/<appName>/<assetId>.<ext>`
+
+Reads `nsolid.apiBaseUrl` and `nsolid.authToken` from `.vscode/settings.json` in the workspace root.
+
+### save-report.cjs
+
+Writes a markdown analysis report to `.nsolid/assets/` and appends metadata to `.nsolid/assets/reports-index.json` so the N|Solid VS Code extension can discover and display it in the Reports History sidebar.
+
+```bash
+node save-report.cjs <type> <title> <content-file>
+node save-report.cjs <type> <title> --stdin < report.md
+```
+
+| Argument | Description |
+|----------|-------------|
+| `type` | Report type: `cpu-analysis`, `memory-analysis`, `memory-leak-hunt`, `security-audit`, `lockfile-analysis`, `package-check`, `profile-analysis` |
+| `title` | Human-readable title shown in the sidebar |
+| `content-file` | Path to a `.md` file with report content, or `--stdin` to read from standard input |
+
+Output: `.nsolid/assets/<type>-<YYYY-MM-DDTHH-MM-SS>.md` + updated `reports-index.json`
+
+## Compatibility
+
+Each skill is a standalone, self-contained `SKILL.md` file compatible with:
+- Claude Code (CLI, Desktop, VS Code, JetBrains)
+- Windsurf (Cascade)
+- Cursor
+- GitHub Copilot
+- Gemini CLI
+- Any tool supporting the [Vercel Agent Skills](https://vercel.com/blog/agent-skills-explained-an-faq) standard
+
+## Prerequisites
+
+All skills require the **N|Solid Console MCP server** to be configured and connected to your AI assistant.
+
+## Architecture
+
+Each skill is independent and self-contained — no delegation chains or sub-skill loading required. The AI assistant acts as the natural orchestrator, chaining skills together based on context. For example, after `analyze-cpu` identifies a bottleneck and proposes a fix, it directs the assistant to invoke `benchmark-validate` to prove the improvement.
