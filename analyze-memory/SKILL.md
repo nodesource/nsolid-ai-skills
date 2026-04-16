@@ -50,7 +50,8 @@ when the current evidence is insufficient and the user wants live analysis.
   investigation.
 
 ### 5. Wait (Critical)
-- Run the wait script using the absolute path of the directory where you read this SKILL.md:
+- Run the helper that sits beside this SKILL.md. Do not guess another path or
+  borrow one from a different repo:
   - For `heap-sampling`: wait the exact `duration` you passed (e.g., `wait.js 30`)
   - For `snapshot`: wait at least 40 seconds (`wait.js 40`)
   ```
@@ -61,12 +62,22 @@ when the current evidence is insufficient and the user wants live analysis.
 - Call `assets-in-progress`. If your Asset ID is still generating, run `wait.js 10` and check again. Do not spam this tool.
 
 ### 7. Summarize the Profile
-- Call `asset-summary` with your Asset ID.
+- Call `asset-summary` with your Asset ID. Treat that JSON as the default
+  analysis artifact.
 - **Critical for full snapshots**: For `heap-sampling`, the summary returns immediately. For `snapshot` assets, the first `asset-summary` call only triggers asynchronous summarization (returning HTTP 202). You must then monitor `assets-in-progress` until it finishes, and call `asset-summary` a second time to retrieve the JSON result. Snapshots >256MB will fail summarization.
+- If the summary already identifies the allocator or retainer, continue from
+  that evidence. Only fetch the raw heap file when the summary is insufficient,
+  the user asks for the file, or you need a persisted local artifact.
 
-### 8. Save the Full Asset
-- Before downloading, check `.nsolid/assets/index.json` and `.nsolid/assets/` for the same `assetId`. If the asset is already present locally, reuse it and skip the download.
-- If the asset is not present, run the fetch-asset script to download and persist the full heap data locally.
+### 8. Save the Full Asset Only When Needed
+- Skip this step unless the summary was insufficient, the user asked for the
+  raw file, or you need a persisted local artifact.
+- Before downloading, check `.nsolid/assets/index.json` and `.nsolid/assets/`
+  for the same `assetId`. If the asset is already present locally, reuse it and
+  skip the download.
+- If the asset is not present, run the shared helper in the workspace root. The
+  filename is `fetch-asset.cjs`, and from this skill directory it is one level
+  up.
 - For `heap-sampling`:
   ```
   node "<skill-dir>/../fetch-asset.cjs" <assetId> heapprofile <appName>
@@ -85,7 +96,12 @@ when the current evidence is insufficient and the user wants live analysis.
   what is missing.
 
 ### 10. Write a Report
-1. Write the full report as markdown to a temporary file (e.g. `/tmp/nsolid-report-memory.md`) using this structure:
+1. Create the markdown report directly under the project-root `.nsolid/assets/`
+  directory using a descriptive filename such as
+  `.nsolid/assets/memory-analysis-<appName>-<assetIdPrefix>.md`. Never create
+  the report in `/tmp`, and never create `.nsolid/` inside an `agents/`
+  folder.
+2. Use this structure for the report body:
    ```markdown
    # Memory Analysis Report — <appName>
    **Date**: <ISO date>
@@ -110,11 +126,16 @@ when the current evidence is insufficient and the user wants live analysis.
    ## Assets
   - Full heap data: `.nsolid/assets/heapprofile-<appName>-<assetIdPrefix>.heapprofile` (or `heapsnapshot-<appName>-<assetIdPrefix>.heapsnapshot`)
    ```
-2. Run the save-report script to persist the report and register it in the metadata index:
+3. Run the save-report script to register that existing markdown file in
+  `.nsolid/assets/reports-index.json`:
    ```
-   node "<skill-dir>/../save-report.cjs" memory-analysis "Memory Analysis Report — <appName>" /tmp/nsolid-report-memory.md
+  node "<skill-dir>/../save-report.cjs" memory-analysis "Memory Analysis Report — <appName>" .nsolid/assets/memory-analysis-<appName>-<assetIdPrefix>.md
    ```
-3. The script prints the saved path. Tell the user: *"Report saved to `.nsolid/assets/`. The full heap data is available in `.nsolid/assets/`."*
+4. The script prints the registered path. Tell the user the report path.
+  Mention the local heap file path only if you downloaded it.
+5. This registration step is required. Do not leave the report only in the chat
+  reply.
+6. Do not describe `/tmp` as the saved report location.
 
 ### 11. For Elusive or Recurring Leaks
 - If the leak shows a staircase pattern, retainers, or closures, consider using the `advanced-memory-leak-hunter` skill for multi-phase baseline-vs-peak delta analysis.
@@ -124,3 +145,7 @@ when the current evidence is insufficient and the user wants live analysis.
 - Do not turn a user-supplied asset review into a fresh capture workflow unless
   the user asked for that or approved it.
 - Prioritize `heap-sampling` over `snapshot` to minimize production impact.
+- Do not fetch raw heap data when `asset-summary` already answers the question.
+- Do not leave the final analysis only in chat. Persist the report to
+  `.nsolid/assets/`.
+- Do not describe `/tmp` as the saved report location.

@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 
-// save-report.cjs — Writes a markdown report to .nsolid/assets/ and appends
-// metadata to .nsolid/assets/reports-index.json so the N|Solid VS Code
+// save-report.cjs — Registers an existing markdown report under
+// .nsolid/assets/ and appends metadata to .nsolid/assets/reports-index.json so
+// the N|Solid VS Code
 // extension can discover and display it in the Reports History sidebar.
 //
 // Usage:
-//   node save-report.cjs <type> <title> <content-file>
-//   node save-report.cjs <type> <title> --stdin < report.md
+//   node save-report.cjs <type> <title> <report-file>
 //
 // Arguments:
 //   type         — Report type (see VALID_TYPES below)
 //   title        — Human-readable title shown in the sidebar
-//   content-file — Path to a temp .md file with the report content,
-//                  OR --stdin to read from standard input
+//   report-file  — Path to an existing .md report file under the project-root
+//                  .nsolid/assets/ directory
 //
 // The script finds the workspace root by walking up from its own location,
 // looking for .vscode/settings.json or package.json (same strategy as
@@ -21,6 +21,11 @@
 // Output:
 //   .nsolid/assets/<type>-<YYYY-MM-DDTHH-MM-SS>.md   — the report file
 //   .nsolid/assets/reports-index.json                 — updated metadata index
+//
+// Intended usage:
+//   Skills should create the report markdown directly inside the project-root
+//   .nsolid/assets/ directory, then call this helper to register the entry in
+//   reports-index.json. The helper does not copy files from temp locations.
 
 'use strict'
 
@@ -72,22 +77,16 @@ function extractSummary (content) {
   return ''
 }
 
-async function readStdin () {
-  return new Promise((resolve, reject) => {
-    let data = ''
-    process.stdin.setEncoding('utf-8')
-    process.stdin.on('data', chunk => { data += chunk })
-    process.stdin.on('end', () => resolve(data))
-    process.stdin.on('error', reject)
-  })
+function isInsideDirectory (parentDir, targetPath) {
+  const relativePath = path.relative(parentDir, targetPath)
+  return relativePath !== '' && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
 }
 
 async function main () {
-  const [,, type, title, contentArg] = process.argv
+  const [,, type, title, reportArg] = process.argv
 
-  if (!type || !title || !contentArg) {
-    console.error('Usage: node save-report.cjs <type> <title> <content-file>')
-    console.error('       node save-report.cjs <type> <title> --stdin < report.md')
+  if (!type || !title || !reportArg) {
+    console.error('Usage: node save-report.cjs <type> <title> <report-file>')
     console.error('  type: ' + VALID_TYPES.join(' | '))
     process.exit(1)
   }
@@ -97,23 +96,31 @@ async function main () {
     process.exit(1)
   }
 
-  let content
-  if (contentArg === '--stdin') {
-    content = await readStdin()
-  } else {
-    const absPath = path.resolve(contentArg)
-    if (!fs.existsSync(absPath)) {
-      console.error(`Content file not found: ${absPath}`)
-      process.exit(1)
-    }
-    content = fs.readFileSync(absPath, 'utf-8')
-  }
-
   const workspaceRoot = findWorkspaceRoot(path.resolve(__dirname))
-
   const nsolidDir = path.join(workspaceRoot, '.nsolid')
   const assetsDir = path.join(nsolidDir, 'assets')
   fs.mkdirSync(assetsDir, { recursive: true })
+
+  const reportPath = path.isAbsolute(reportArg)
+    ? reportArg
+    : path.resolve(workspaceRoot, reportArg)
+
+  if (!fs.existsSync(reportPath)) {
+    console.error(`Report file not found: ${reportPath}`)
+    process.exit(1)
+  }
+
+  if (!isInsideDirectory(assetsDir, reportPath)) {
+    console.error(`Report file must be inside ${assetsDir}: ${reportPath}`)
+    process.exit(1)
+  }
+
+  if (path.extname(reportPath).toLowerCase() !== '.md') {
+    console.error(`Report file must be a markdown file: ${reportPath}`)
+    process.exit(1)
+  }
+
+  const content = fs.readFileSync(reportPath, 'utf-8')
 
   // Add .gitignore to .nsolid/ if it doesn't already exist
   const gitignorePath = path.join(nsolidDir, '.gitignore')
@@ -123,12 +130,7 @@ async function main () {
 
   const now = new Date()
   const id = `${type}-${now.getTime()}`
-  // Matches Minwoo's dateStr format: YYYY-MM-DDTHH-MM-SS
-  const dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  const fileName = `${type}-${dateStr}.md`
-  const filePath = path.join(assetsDir, fileName)
-
-  fs.writeFileSync(filePath, content, 'utf-8')
+  const fileName = path.basename(reportPath)
 
   const summary = extractSummary(content)
   const metadata = {
@@ -151,10 +153,15 @@ async function main () {
     reports = []
   }
 
-  reports.push(metadata)
+  const existingIndex = reports.findIndex(report => report.fileName === fileName)
+  if (existingIndex >= 0) {
+    reports[existingIndex] = metadata
+  } else {
+    reports.push(metadata)
+  }
   fs.writeFileSync(indexPath, JSON.stringify(reports, null, 2), 'utf-8')
 
-  console.log(`Report saved to: ${filePath}`)
+  console.log(`Report registered: ${reportPath}`)
 }
 
 main().catch(err => {

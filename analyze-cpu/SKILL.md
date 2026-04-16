@@ -29,7 +29,9 @@ says read-only, offline, or no-capture.
 - If the prompt is a telemetry alert such as "CPU spike 121.1% in app X", use
   that app name as authoritative scope and immediately run the live workflow:
   identify the hottest connected agent inside that app, capture a 30-second CPU
-  profile, summarize it, download it, and fetch runtime code when possible.
+  profile, summarize it, and fetch runtime code when possible. Download the raw
+  profile only if the summary is insufficient, the user asks for the file, or
+  you need a saved artifact for later review.
 - In telemetry-alert mode, do not stop after rediscovering the same spike and
   do not ask for capture approval unless the prompt explicitly says read-only,
   offline, or no-capture.
@@ -76,7 +78,8 @@ says read-only, offline, or no-capture.
 ### 6. Wait (Critical)
 - Run the wait script using the `duration` you passed to `profile` (normally
   `30` seconds for this skill).
-- Use the absolute path of the directory where you read this SKILL.md:
+- Use the helper that sits beside this SKILL.md. Do not guess another path or
+  borrow one from a different repo.
   ```
   node "<skill-dir>/wait.js" <duration>
   ```
@@ -85,18 +88,30 @@ says read-only, offline, or no-capture.
 - Call `assets-in-progress`. If your Asset ID is still listed, run `wait.js 5` and check again.
 
 ### 8. Summarize the Profile
-- Once complete, call `asset-summary` using your Asset ID to get the token-optimized JSON view.
-- Do not stop after `asset-summary`; continue the workflow with full profile
-  download and runtime code extraction when the summary exposes a valid culprit.
+- Once complete, call `asset-summary` using your Asset ID. Treat that JSON as
+  the default analysis artifact because it is the lowest-token view.
+- If the summary already exposes a valid culprit, continue directly to culprit
+  identification and `runtime-code` extraction.
+- Only fetch the raw `.cpuprofile` when the summary is insufficient, the user
+  explicitly asks for the file, or you need to persist it for later manual
+  inspection or reporting.
 
-### 9. Save the Full Profile
-- Before downloading, check `.nsolid/assets/index.json` and `.nsolid/assets/` for the same `assetId`. If the asset is already present locally, reuse it and skip the download.
-- If the asset is not present, run the fetch-asset script to download and persist the full CPU profile locally.
-- Use the absolute path to the shared `fetch-asset.js` script (one directory up from this skill):
+### 9. Save the Full Profile Only When Needed
+- Skip this step unless the summary was insufficient, the user asked for the
+  raw file, or you need a persisted local artifact.
+- Before downloading, check `.nsolid/assets/index.json` and `.nsolid/assets/`
+  for the same `assetId`. If the asset is already present locally, reuse it and
+  skip the download.
+- If the asset is not present, run the shared fetch helper in the workspace
+  root. The filename is `fetch-asset.cjs`, not `fetch-asset.js`. From this
+  skill directory it is one level up. Do not look under `agents/skills` or any
+  other repo copy.
   ```
   node "<skill-dir>/../fetch-asset.cjs" <assetId> cpuprofile <appName>
   ```
-- The helper saves assets flat in `.nsolid/assets/` as `cpuprofile-<appName>-<assetIdPrefix>.cpuprofile`, updates `.nsolid/assets/index.json`, and no-ops if the asset was already downloaded.
+- The helper saves assets flat in `.nsolid/assets/` as
+  `cpuprofile-<appName>-<assetIdPrefix>.cpuprofile`, updates
+  `.nsolid/assets/index.json`, and no-ops if the asset was already downloaded.
 
 ### 10. Identify the Culprit
 - Analyze the summary JSON or local profile data. Identify the function
@@ -117,15 +132,19 @@ says read-only, offline, or no-capture.
   - If extraction still fails, stop and ask the user to provide the source code.
 
 ### 12. Human in the Loop
-- Show the user the bottleneck, the runtime code, the saved profile path, and
-  the root cause.
+- Show the user the bottleneck, the runtime code, and the root cause. Include
+  the saved profile path only if you actually downloaded the raw profile.
 - End with a human-in-the-loop question in this shape:
   *"I found the hot function and captured the supporting profile. Do you want me
   to continue with optimization and then benchmark the before/after result?"*
 - Do not jump into optimization until the user says yes.
 
 ### 13. Write a Report
-1. Write the full report as markdown to a temporary file (e.g. `/tmp/nsolid-report-cpu.md`) using this structure:
+1. Create the markdown report directly under the project-root `.nsolid/assets/`
+  directory using a descriptive filename such as
+  `.nsolid/assets/cpu-analysis-<appName>-<assetIdPrefix>.md`. Never create the
+  report in `/tmp`, and never create `.nsolid/` inside an `agents/` folder.
+2. Use this structure for the report body:
    ```markdown
    # CPU Analysis Report — <appName>
    **Date**: <ISO date>
@@ -152,13 +171,19 @@ says read-only, offline, or no-capture.
    <Proposed fix or optimization>
 
    ## Assets
-  - Full CPU profile: `.nsolid/assets/cpuprofile-<appName>-<assetIdPrefix>.cpuprofile`
+  - Asset summary ID: `<assetId>`
+  - Full CPU profile: `<path if downloaded, otherwise 'not downloaded'>`
    ```
-2. Run the save-report script to persist the report and register it in the metadata index:
+3. Run the save-report script to register that existing markdown file in
+  `.nsolid/assets/reports-index.json`:
    ```
-   node "<skill-dir>/../save-report.cjs" cpu-analysis "CPU Analysis Report — <appName>" /tmp/nsolid-report-cpu.md
+  node "<skill-dir>/../save-report.cjs" cpu-analysis "CPU Analysis Report — <appName>" .nsolid/assets/cpu-analysis-<appName>-<assetIdPrefix>.md
    ```
-3. The script prints the saved path. Tell the user: *"Report saved to `.nsolid/assets/`. You can also open the full CPU profile in VS Code's JavaScript Profiler from `.nsolid/assets/`."*
+4. The script prints the registered path. Tell the user the report path.
+  Mention the local `.cpuprofile` path only if you downloaded it.
+5. This registration step is required. Do not leave the report only in the
+  chat reply.
+6. Do not describe `/tmp` as the saved report location.
 
 ### 14. Validate the Fix
 - Once the user approves optimization and an improved version is written, use
@@ -173,4 +198,8 @@ says read-only, offline, or no-capture.
 - NEVER call discovery tools only to restate the same app and spike value the
   user already provided; continue to the target-agent selection and profile.
 - If you do not wait the required `duration`, the profiler will fail or you will waste tokens polling empty states.
+- Do not fetch a raw profile when `asset-summary` already answers the question.
+- Do not leave the final analysis only in chat. Persist the report to
+  `.nsolid/assets/`.
+- Do not describe `/tmp` as the saved report location.
 - A fix is not a fix until it is proven by benchmarking.

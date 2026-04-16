@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-// fetch-asset.js — Downloads a full N|Solid asset (CPU profile, heap snapshot,
+// fetch-asset.cjs — Downloads a full N|Solid asset (CPU profile, heap snapshot,
 // heap sampling) from the console API and saves it to .nsolid/assets/.
 //
 // Usage:
-//   node fetch-asset.js <assetId> <assetType> [appName]
+//   node fetch-asset.cjs <assetId> <assetType> [appName]
 //
 // Arguments:
 //   assetId   — The asset ID returned by the profile/snapshot/heap-sampling MCP tool
@@ -290,7 +290,7 @@ async function main () {
   const [,, assetId, assetType, appName = 'unknown'] = process.argv
 
   if (!assetId || !assetType) {
-    console.error('Usage: node fetch-asset.js <assetId> <assetType> [appName]')
+    console.error('Usage: node fetch-asset.cjs <assetId> <assetType> [appName]')
     console.error('  assetType: cpuprofile | heapprofile | heapsnapshot')
     process.exit(1)
   }

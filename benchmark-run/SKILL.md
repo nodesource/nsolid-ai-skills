@@ -160,7 +160,7 @@ Note the returned `jobId`.
 
 ### 4. Wait
 
-Run the wait script (use the absolute path of the directory where you read this SKILL.md):
+Run the helper that sits beside this SKILL.md:
 
 ```
 node "<skill-dir>/wait.js" 20
@@ -173,6 +173,9 @@ Call `get_benchmark_result` with the `jobId`. If `status` is not yet `"completed
 Extract: `result.opsSec`, `result.opsSecPerRun`, `result.iterations`, `result.histogram`, `result.benchmarkConfig`.
 
 ### 6. Save to `.nsolid/benchmarks/`
+
+This always means the project-root `.nsolid/benchmarks/` directory. Never
+create `.nsolid/` beside the skill or inside any `agents/` folder.
 
 Build this JSON (fill in real values):
 
@@ -197,7 +200,8 @@ Build this JSON (fill in real values):
 }
 ```
 
-Run the write script (use the same `<skill-dir>` path):
+Run the write script. The helper resolves the project root from its own
+location, so do not improvise another output path:
 
 ```
 node "<skill-dir>/write-result.js" '<json-string>'

@@ -14,9 +14,9 @@ const WRITE_RESULT_SCRIPTS = [
   path.join(ROOT, 'benchmark-validate', 'write-result.js')
 ]
 
-function run (script, args) {
+function run (script, args, cwd = ROOT) {
   return spawnSync(process.execPath, [script, ...args], {
-    cwd: ROOT,
+    cwd,
     encoding: 'utf-8',
     timeout: 10_000
   })
@@ -102,6 +102,26 @@ for (const script of WRITE_RESULT_SCRIPTS) {
 
       const outputPath = result.stdout.trim()
       assert.match(path.basename(outputPath), /^\d+-unknown\.json$/)
+    })
+  })
+
+  test(`${scriptLabel} writes to the project root even when invoked from a nested directory`, async () => {
+    await withBenchmarkState(() => {
+      const nestedCwd = path.dirname(script)
+      const payload = JSON.stringify({
+        functionName: 'nested cwd',
+        result: { opsSec: 99 }
+      })
+
+      const result = run(script, [payload], nestedCwd)
+      assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
+
+      const outputPath = result.stdout.trim()
+      assert.ok(outputPath.startsWith(BENCHMARKS_DIR + path.sep), `Unexpected output path: ${outputPath}`)
+      assert.ok(fs.existsSync(outputPath))
+
+      const nestedBenchmarksDir = path.join(nestedCwd, '.nsolid', 'benchmarks')
+      assert.ok(!fs.existsSync(nestedBenchmarksDir), `Nested .nsolid directory should not exist: ${nestedBenchmarksDir}`)
     })
   })
 }

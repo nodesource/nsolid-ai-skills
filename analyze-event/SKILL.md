@@ -50,8 +50,12 @@ found and what is still missing.
   `analyze-cpu`, `analyze-memory`, `analyze-vulnerabilities`, or
   `analyze-tracing`.
 
-### 5. Write a Report When Helpful
-1. Save a markdown report to a temporary file using this structure:
+### 5. Always Write a Report
+1. Create the markdown report directly under the project-root `.nsolid/assets/`
+  directory using a descriptive filename such as
+  `.nsolid/assets/event-analysis-<eventName>.md`. Never create the report in
+  `/tmp`, and never create `.nsolid/` inside an `agents/` folder.
+2. Use this structure for the report body:
    ```markdown
    # Event Analysis Report — <event name>
    **Date**: <ISO date>
@@ -71,10 +75,15 @@ found and what is still missing.
    ## Recommendation
    <most pragmatic next step>
    ```
-2. Persist it with:
+3. Register that existing file with the save helper so it appends the metadata
+  entry to `.nsolid/assets/reports-index.json`.
    ```
-   node "<skill-dir>/../save-report.cjs" event-analysis "Event Analysis Report — <event name>" /tmp/nsolid-report-event.md
+  node "<skill-dir>/../save-report.cjs" event-analysis "Event Analysis Report — <event name>" .nsolid/assets/event-analysis-<eventName>.md
    ```
+4. Do not stop after pasting findings in chat. Always run the registration step
+  and tell the user where the report was written.
+5. Tell the user the actual `.nsolid/assets/...` report path you created. Do
+  not describe `/tmp` as the saved report location.
 
 ## Tools
 - `events-historic`
@@ -92,3 +101,6 @@ found and what is still missing.
 - Do not ask for a new capture until you have checked whether assets already
   exist.
 - If the event lacks enough data, say exactly what is missing.
+- Do not leave the report only in chat. Persist it to `.nsolid/assets/` on
+  every completed event investigation.
+- Do not describe `/tmp` as the saved report location.

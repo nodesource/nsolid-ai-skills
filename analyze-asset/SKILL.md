@@ -27,6 +27,9 @@ has. Do not capture a new profile unless the user explicitly asks for that.
 - For heap snapshots, `asset-summary` may return an async response first. When
   that happens, call `assets-in-progress`, wait with `wait.js`, and retry until
   the summary is ready.
+- Treat `asset-summary` as the default analysis artifact. Do not go fetch the
+  raw asset unless the user explicitly asks for the file or the summary is
+  insufficient.
 - If MCP is unavailable, `asset-summary` fails, or the user only supplied a
   local file path, read the local file and use that content as analysis input.
 - If the local file is unreadable and MCP is unavailable, state that clearly and
@@ -62,7 +65,11 @@ has. Do not capture a new profile unless the user explicitly asks for that.
   changes.
 
 ### 7. Write a Report
-1. Save a markdown report to a temporary file using this structure:
+1. Create the markdown report directly under the project-root `.nsolid/assets/`
+  directory using a descriptive filename such as
+  `.nsolid/assets/asset-analysis-<assetIdPrefix>.md`. Never create the report
+  in `/tmp`, and never create `.nsolid/` inside an `agents/` folder.
+2. Use this structure for the report body:
    ```markdown
    # Asset Analysis Report — <asset label>
    **Date**: <ISO date>
@@ -84,10 +91,15 @@ has. Do not capture a new profile unless the user explicitly asks for that.
    ## Recommendation
    <most pragmatic next step>
    ```
-2. Persist it with:
+3. Register that existing file with the save helper so it appends the metadata
+  entry to `.nsolid/assets/reports-index.json`.
    ```
-   node "<skill-dir>/../save-report.cjs" asset-analysis "Asset Analysis Report — <asset label>" /tmp/nsolid-report-asset.md
+  node "<skill-dir>/../save-report.cjs" asset-analysis "Asset Analysis Report — <asset label>" .nsolid/assets/asset-analysis-<assetIdPrefix>.md
    ```
+4. This registration step is required. Do not leave the report only in the chat
+  reply.
+5. Tell the user the actual `.nsolid/assets/...` report path you created. Do
+  not describe `/tmp` as the saved report location.
 
 ### 8. Validate When Optimization Is Proposed
 - If you end up optimizing CPU-bound code, use the `benchmark-validate` skill to
@@ -105,3 +117,6 @@ has. Do not capture a new profile unless the user explicitly asks for that.
 - Do not download raw assets when `asset-summary` already gives enough signal.
 - Do not pretend heap snapshots are ready when summarization is still pending.
 - Do not assume the local file is CPU-only; support heap assets too.
+- Do not leave the final analysis only in chat. Persist the report to
+  `.nsolid/assets/`.
+- Do not describe `/tmp` as the saved report location.

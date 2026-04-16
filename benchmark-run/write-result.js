@@ -8,6 +8,22 @@
 const fs = require('fs');
 const path = require('path');
 
+function findWorkspaceRoot(startDir) {
+  let dir = startDir;
+
+  while (dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, '.vscode', 'settings.json'))) {
+      return dir;
+    }
+    if (fs.existsSync(path.join(dir, 'package.json'))) {
+      return dir;
+    }
+    dir = path.dirname(dir);
+  }
+
+  return startDir;
+}
+
 const json = process.argv[2];
 if (!json) {
   console.error('Usage: node write-result.js \'<json-string>\'');
@@ -22,7 +38,7 @@ try {
   process.exit(1);
 }
 
-const workspaceRoot = process.cwd();
+const workspaceRoot = findWorkspaceRoot(path.resolve(__dirname));
 const outputDir = path.join(workspaceRoot, '.nsolid', 'benchmarks');
 
 // Create .nsolid/benchmarks/ if it doesn't exist
