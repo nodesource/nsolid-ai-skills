@@ -8,13 +8,16 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 
-const SCRIPT = path.resolve(__dirname, '..', 'fetch-asset.cjs')
+const FETCH_ASSET_SCRIPTS = [
+  path.resolve(__dirname, '..', 'analyze-cpu', 'fetch-asset.cjs'),
+  path.resolve(__dirname, '..', 'analyze-memory', 'fetch-asset.cjs')
+]
 const ROOT = path.resolve(__dirname, '..')
 const ASSETS_DIR = path.join(ROOT, '.nsolid', 'assets')
 const VSCODE_DIR = path.join(ROOT, '.vscode')
 const SETTINGS_PATH = path.join(VSCODE_DIR, 'settings.json')
 
-function run (args) {
+function run (SCRIPT, args) {
   return spawnSync(process.execPath, [SCRIPT, ...args], {
     encoding: 'utf-8',
     timeout: 15_000
@@ -23,7 +26,7 @@ function run (args) {
 
 // spawnSync blocks the Node.js event loop, which prevents an in-process HTTP
 // server from responding. Use runAsync (spawn-based) for tests that need one.
-function runAsync (args, opts = {}) {
+function runAsync (SCRIPT, args, opts = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [SCRIPT, ...args], opts)
     let stdout = ''
@@ -147,43 +150,45 @@ async function withServer (handler, fn) {
   }
 }
 
-test('exits with usage message when no arguments provided', () => {
-  const result = run([])
+for (const SCRIPT of FETCH_ASSET_SCRIPTS) {
+const scriptName = path.basename(path.dirname(SCRIPT)) + '/' + path.basename(SCRIPT)
+test(`${scriptName} - exits with usage message when no arguments provided`, () => {
+  const result = run(SCRIPT, [])
   assert.strictEqual(result.status, 1)
   assert.match(result.stderr, /Usage:/)
 })
 
-test('exits with error for unknown asset type', () => {
-  const result = run(['some-asset-id', 'badtype'])
+test(`${scriptName} - exits with error for unknown asset type`, () => {
+  const result = run(SCRIPT, ['some-asset-id', 'badtype'])
   assert.strictEqual(result.status, 1)
   assert.match(result.stderr, /Unknown asset type/)
 })
 
-test('exits with error when .vscode/settings.json is missing', async () => {
+test(`${scriptName} - exits with error when .vscode/settings.json is missing`, async () => {
   await withoutSettings(() => {
-    const result = run(['some-asset-id', 'cpuprofile'])
+    const result = run(SCRIPT, ['some-asset-id', 'cpuprofile'])
     assert.strictEqual(result.status, 1)
     assert.match(result.stderr, /Cannot find .vscode\/settings\.json/)
   })
 })
 
-test('exits with error when nsolid.apiBaseUrl is missing from settings', async () => {
+test(`${scriptName} - exits with error when nsolid.apiBaseUrl is missing from settings`, async () => {
   await withSettings({ 'nsolid.authToken': 'token' }, () => {
-    const result = run(['some-asset-id', 'cpuprofile'])
+    const result = run(SCRIPT, ['some-asset-id', 'cpuprofile'])
     assert.strictEqual(result.status, 1)
     assert.match(result.stderr, /Missing "nsolid\.consoleUrl" or legacy "nsolid\.apiBaseUrl"/)
   })
 })
 
-test('exits with error when nsolid.authToken is missing from settings', async () => {
+test(`${scriptName} - exits with error when nsolid.authToken is missing from settings`, async () => {
   await withSettings({ 'nsolid.apiBaseUrl': 'http://localhost:9000' }, () => {
-    const result = run(['some-asset-id', 'cpuprofile'])
+    const result = run(SCRIPT, ['some-asset-id', 'cpuprofile'])
     assert.strictEqual(result.status, 1)
     assert.match(result.stderr, /Missing "nsolid\.serviceToken" or legacy "nsolid\.authToken"/)
   })
 })
 
-test('accepts modern settings keys and JSONC formatting', async () => {
+test(`${scriptName} - accepts modern settings keys and JSONC formatting`, async () => {
   const assetId = 'test-settings-modern'
   const assetContent = '{"type":"cpuprofile","nodes":[]}'
 
@@ -206,7 +211,7 @@ test('accepts modern settings keys and JSONC formatting', async () => {
   "nsolid.serviceToken": "test-token",
 }`,
         async () => {
-          const result = await runAsync([assetId, 'cpuprofile', 'modern/a'])
+          const result = await runAsync(SCRIPT, [assetId, 'cpuprofile', 'modern/a'])
           assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
           assert.match(result.stdout, /Asset saved to:/)
 
@@ -220,7 +225,7 @@ test('accepts modern settings keys and JSONC formatting', async () => {
   })
 })
 
-test('downloads asset and saves to flat asset path with index metadata', async () => {
+test(`${scriptName} - downloads asset and saves to flat asset path with index metadata`, async () => {
   const ASSET_ID = 'test-asset-abc123'
   const ASSET_CONTENT = '{"type":"cpuprofile","nodes":[]}'
   const savedPath = path.join(ASSETS_DIR, 'cpuprofile-myapp-test-ass.cpuprofile')
@@ -240,7 +245,7 @@ test('downloads asset and saves to flat asset path with index metadata', async (
         await withSettings(
           { 'nsolid.apiBaseUrl': `http://127.0.0.1:${port}`, 'nsolid.authToken': 'test-token' },
           async () => {
-            const result = await runAsync([ASSET_ID, 'cpuprofile', 'myapp'])
+            const result = await runAsync(SCRIPT, [ASSET_ID, 'cpuprofile', 'myapp'])
             assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
             assert.match(result.stdout, /Asset saved to:/)
 
@@ -262,7 +267,7 @@ test('downloads asset and saves to flat asset path with index metadata', async (
   })
 })
 
-test('uses "unknown" as default app name when omitted', async () => {
+test(`${scriptName} - uses "unknown" as default app name when omitted`, async () => {
   const ASSET_ID = 'test-asset-default'
   const ASSET_CONTENT = '{}'
   const savedPath = path.join(ASSETS_DIR, 'heapprofile-unknown-test-ass.heapprofile')
@@ -277,7 +282,7 @@ test('uses "unknown" as default app name when omitted', async () => {
         await withSettings(
           { 'nsolid.apiBaseUrl': `http://127.0.0.1:${port}`, 'nsolid.authToken': 'test-token' },
           async () => {
-            const result = await runAsync([ASSET_ID, 'heapprofile'])
+            const result = await runAsync(SCRIPT, [ASSET_ID, 'heapprofile'])
             assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
 
             assert.ok(fs.existsSync(savedPath))
@@ -293,7 +298,7 @@ test('uses "unknown" as default app name when omitted', async () => {
   })
 })
 
-test('migrates a legacy nested asset into the flat layout', async () => {
+test(`${scriptName} - migrates a legacy nested asset into the flat layout`, async () => {
   const assetId = 'legacy-asset-123456'
   const legacyDir = path.join(ASSETS_DIR, 'legacyapp')
   const legacyPath = path.join(legacyDir, `${assetId}.cpuprofile`)
@@ -306,7 +311,7 @@ test('migrates a legacy nested asset into the flat layout', async () => {
     await withSettings(
       { 'nsolid.apiBaseUrl': 'http://127.0.0.1:65535', 'nsolid.authToken': 'unused-token' },
       async () => {
-        const result = await runAsync([assetId, 'cpuprofile', 'legacyapp'])
+        const result = await runAsync(SCRIPT, [assetId, 'cpuprofile', 'legacyapp'])
         assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
         assert.match(result.stdout, /Asset already existed and was moved to:/)
 
@@ -322,7 +327,7 @@ test('migrates a legacy nested asset into the flat layout', async () => {
   })
 })
 
-test('exits with error when console returns non-200 status', async () => {
+test(`${scriptName} - exits with error when console returns non-200 status`, async () => {
   await withServer(
     (req, res) => {
       res.writeHead(401)
@@ -332,7 +337,7 @@ test('exits with error when console returns non-200 status', async () => {
       await withSettings(
         { 'nsolid.apiBaseUrl': `http://127.0.0.1:${port}`, 'nsolid.authToken': 'bad-token' },
         async () => {
-          const result = await runAsync(['some-asset-id', 'heapsnapshot'])
+          const result = await runAsync(SCRIPT, ['some-asset-id', 'heapsnapshot'])
           assert.strictEqual(result.status, 1)
           assert.match(result.stderr, /Console returned 401/)
         }
@@ -341,7 +346,7 @@ test('exits with error when console returns non-200 status', async () => {
   )
 })
 
-test('prefers the caller workspace when installed under .agents/skills', async () => {
+test(`${scriptName} - prefers the caller workspace when installed under .agents/skills`, async () => {
   const assetId = 'test-installed-asset'
   const assetContent = '{"type":"cpuprofile","nodes":[1]}'
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fetch-asset-installed-'))
@@ -376,8 +381,9 @@ test('prefers the caller workspace when installed under .agents/skills', async (
           'nsolid.authToken': 'test-token'
         }))
 
-        const result = await runScriptAsync(installedScript, [assetId, 'cpuprofile', 'installed/app'], {
-          cwd: projectRoot
+        const result = await runAsync(installedScript, [assetId, 'cpuprofile', 'installed/app'], {
+          cwd: projectRoot,
+          env: { ...process.env, INIT_CWD: projectRoot }
         })
         assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
         assert.match(result.stdout, /Asset saved to:/)
@@ -397,3 +403,13 @@ test('prefers the caller workspace when installed under .agents/skills', async (
     fs.rmSync(projectRoot, { recursive: true, force: true })
   }
 })
+
+}for (const SCRIPT of FETCH_ASSET_SCRIPTS) {
+const scriptName = path.basename(path.dirname(SCRIPT)) + '/' + path.basename(SCRIPT)
+
+
+}for (const SCRIPT of FETCH_ASSET_SCRIPTS) {
+const scriptName = path.basename(path.dirname(SCRIPT)) + '/' + path.basename(SCRIPT)
+
+
+}

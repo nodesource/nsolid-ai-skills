@@ -66,27 +66,6 @@ Output: `.nsolid/assets/<assetType>-<appName>-<assetIdPrefix>.<ext>`
 
 Reads `nsolid.apiBaseUrl` and `nsolid.authToken` from `.vscode/settings.json` in the workspace root.
 
-### save-report.cjs
-
-Registers an existing markdown analysis report under `.nsolid/assets/` and appends metadata to `.nsolid/assets/reports-index.json` so the N|Solid VS Code extension can discover and display it in the Reports History sidebar.
-
-```bash
-node save-report.cjs <type> <title> <report-file>
-```
-
-| Argument | Description |
-|----------|-------------|
-| `type` | Report type: `cpu-analysis`, `memory-analysis`, `memory-leak-hunt`, `security-audit`, `lockfile-analysis`, `package-check`, `profile-analysis` |
-| `title` | Human-readable title shown in the sidebar |
-| `report-file` | Path to an existing `.md` file under the project-root `.nsolid/assets/` directory |
-
-Output: updated `.nsolid/assets/reports-index.json`
-
-The report markdown itself must already exist in the project-root `.nsolid/assets/`
-directory before you call `save-report.cjs`. Use an absolute path under the
-workspace root, not a bare filename relative to a skill folder. Do not create
-reports in `/tmp`.
-
 Benchmark result helpers also always write to the project-root `.nsolid/benchmarks/`
 directory, never beside a skill file or inside an `agents/` folder.
 

@@ -24,9 +24,8 @@ when the current evidence is insufficient and the user wants live analysis.
 - If the user already provided an asset ID, local file path, or structured heap
   summary, analyze that evidence first instead of starting with
   `metrics-historic`.
-- If the prompt only contains a generic heap alert or OOM message, explain that
-  this is not enough to identify the allocator. Ask for an existing asset or
-  user approval to capture one.
+- If the prompt is a telemetry alert for a specific app, use that as the
+  starting signal for live analysis of that same app.
 - If the user explicitly says read-only, offline, or "analyze this file", do
   not capture a new heap asset unless they later approve it.
 
@@ -50,92 +49,43 @@ when the current evidence is insufficient and the user wants live analysis.
   investigation.
 
 ### 5. Wait (Critical)
-- Run the helper that sits beside this SKILL.md. Do not guess another path or
-  borrow one from a different repo:
-  - For `heap-sampling`: wait the exact `duration` you passed (e.g., `wait.js 30`)
-  - For `snapshot`: wait at least 40 seconds (`wait.js 40`)
-  ```
-  node "<skill-dir>/wait.js" <seconds>
-  ```
+- Use the `nsolid_wait` tool.
+- For `heap-sampling`, wait the exact `duration` you passed.
+- For `snapshot`, wait at least 40 seconds before checking summarization.
 
 ### 6. Monitor Asset Generation
-- Call `assets-in-progress`. If your Asset ID is still generating, run `wait.js 10` and check again. Do not spam this tool.
+- For `heap-sampling`, call `asset-summary` on the exact Asset ID after waiting.
+- For `snapshot`, call `asset-summary` on the exact Asset ID first.
+- If a snapshot summary is still being generated, use `assets-in-progress` and
+  `nsolid_wait` in short intervals before retrying `asset-summary`.
+- Do not use `assets-in-progress` as the first check for heap-sampling assets.
 
 ### 7. Summarize the Profile
-- Call `asset-summary` with your Asset ID. Treat that JSON as the default
-  analysis artifact.
-- **Critical for full snapshots**: For `heap-sampling`, the summary returns immediately. For `snapshot` assets, the first `asset-summary` call only triggers asynchronous summarization (returning HTTP 202). You must then monitor `assets-in-progress` until it finishes, and call `asset-summary` a second time to retrieve the JSON result. Snapshots >256MB will fail summarization.
-- If the summary already identifies the allocator or retainer, continue from
-  that evidence. Only fetch the raw heap file when the summary is insufficient,
-  the user asks for the file, or you need a persisted local artifact.
+- Call `asset-summary` with your Asset ID.
+- **Critical for full snapshots**: For `heap-sampling`, the summary usually returns immediately after the wait. For `snapshot` assets, the first `asset-summary` call may only trigger asynchronous summarization (HTTP 202). In that case, monitor readiness briefly and retry `asset-summary`.
+- Once `asset-summary` succeeds, analyze that summary directly. Do not answer that telemetry alone is insufficient after a successful heap summary.
 
-### 8. Save the Full Asset Only When Needed
-- Skip this step unless the summary was insufficient, the user asked for the
-  raw file, or you need a persisted local artifact.
-- Before downloading, check `.nsolid/assets/index.json` and `.nsolid/assets/`
-  for the same `assetId`. If the asset is already present locally, reuse it and
-  skip the download.
-- If the asset is not present, run the shared helper in the workspace root. The
-  filename is `fetch-asset.cjs`, and from this skill directory it is one level
-  up.
-- For `heap-sampling`:
-  ```
-  node "<skill-dir>/../fetch-asset.cjs" <assetId> heapprofile <appName>
-  ```
-- For `snapshot`:
-  ```
-  node "<skill-dir>/../fetch-asset.cjs" <assetId> heapsnapshot <appName>
-  ```
-- The helper saves assets flat in `.nsolid/assets/`, updates `.nsolid/assets/index.json`, and no-ops if the asset was already downloaded.
+### 8. Save the Full Asset
+- Call `nsolid_downloadAsset` with the captured `assetId`.
+- Use `kind: "heapprofile"` for `heap-sampling` assets.
+- Use `kind: "heapsnapshot"` for `snapshot` assets.
+- The host tool is idempotent and will reuse an existing local download when possible.
 
 ### 9. Identify the Culprit
 - Look for the constructor or function allocating the largest chunks of memory
   in the summary JSON or local file analysis. Explain your findings to the
   user.
 - If the current evidence is insufficient to isolate the allocator, say exactly
-  what is missing.
+  what specific constructor, retaining path, or retained-size detail is still missing from the summary.
 
-### 10. Write a Report
-1. Create the markdown report directly under the project-root `.nsolid/assets/`
-  directory using an absolute filesystem path such as
-  `<workspace-root>/.nsolid/assets/memory-analysis-<appName>-<assetIdPrefix>.md`.
-  Never use a bare filename like `nsolid-report-memory.md`, never create the
-  report in `/tmp`, and never create `.nsolid/` inside an `agents/` folder.
-2. Use this structure for the report body:
-   ```markdown
-   # Memory Analysis Report — <appName>
-   **Date**: <ISO date>
-   **Agent ID**: <id>
-   **Method**: heap-sampling | snapshot
-   **Duration**: <duration>s
-
-   ## Summary
-   <Brief description of the memory issue found>
-
-   ## Top Allocators
-   | Constructor / Function | Self Size | Retained Size |
-   |----------------------|-----------|---------------|
-   | <name> | <size> | <size> |
-
-   ## Root Cause
-   <Explanation of what is holding memory>
-
-   ## Recommendation
-   <Proposed fix or optimization>
-
-   ## Assets
-  - Full heap data: `.nsolid/assets/heapprofile-<appName>-<assetIdPrefix>.heapprofile` (or `heapsnapshot-<appName>-<assetIdPrefix>.heapsnapshot`)
-   ```
-3. Run the save-report script to register that same absolute markdown path in
-  `.nsolid/assets/reports-index.json`:
-   ```
-  node "<skill-dir>/../save-report.cjs" memory-analysis "Memory Analysis Report — <appName>" "<workspace-root>/.nsolid/assets/memory-analysis-<appName>-<assetIdPrefix>.md"
-   ```
-4. The script prints the registered path. Tell the user the report path.
-  Mention the local heap file path only if you downloaded it.
-5. This registration step is required. Do not leave the report only in the chat
-  reply.
-6. Do not describe `/tmp` as the saved report location.
+### 10. Present the Result
+- Structure the final answer around:
+  1. Summary of the memory issue.
+  2. Top allocators / constructors from the summary.
+  3. Root cause hypothesis.
+  4. Recommendation.
+  5. Full asset reference if downloaded.
+- The host extension persists the presented markdown automatically. Do not call shell scripts or save helpers.
 
 ### 11. For Elusive or Recurring Leaks
 - If the leak shows a staircase pattern, retainers, or closures, consider using the `advanced-memory-leak-hunter` skill for multi-phase baseline-vs-peak delta analysis.
@@ -145,7 +95,5 @@ when the current evidence is insufficient and the user wants live analysis.
 - Do not turn a user-supplied asset review into a fresh capture workflow unless
   the user asked for that or approved it.
 - Prioritize `heap-sampling` over `snapshot` to minimize production impact.
-- Do not fetch raw heap data when `asset-summary` already answers the question.
-- Do not leave the final analysis only in chat. Persist the report to
-  `.nsolid/assets/`.
-- Do not describe `/tmp` as the saved report location.
+- After a successful `asset-summary`, analyze that summary instead of falling
+  back to a generic telemetry-only conclusion.

@@ -28,21 +28,14 @@ you think in terms of deltas, allocations over time, and retained heap curves.
 ### Phase 1: Establish the Baseline
 1. Identify the target application suspected of leaking memory.
 2. Take an initial low-overhead heap sample using `heap-sampling` (duration: `30` seconds).
-3. Run the helper that sits beside this SKILL.md:
+3. Run the wait script using the absolute path of the directory where you read this SKILL.md:
    ```
-   node "<skill-dir>/wait.js" 30
+   node "<skill-dir>/wait.cjs" 30
    ```
-4. Call `assets-in-progress` to ensure generation is done. If still in progress, run `wait.js 10` and check again.
+4. Call `assets-in-progress` to ensure generation is done. If still in progress, run `wait.cjs 10` and check again.
 5. Pull the baseline summary using `asset-summary`. Note the top allocating constructors (e.g., `Object`, `Array`, `system / Map`).
-6. Treat that summary as the default baseline artifact. Only download the raw
-   heap file if the summary is insufficient, the user asks for the file, or you
-   need a persisted local artifact for later comparison.
-7. If you need a local copy, check `.nsolid/assets/index.json` and
-   `.nsolid/assets/` for the same baseline asset ID. If it is already present
-   locally, reuse it and skip the download.
-8. If you still need a local copy and the baseline asset is not present, save
-   it with the shared helper in the workspace root (`fetch-asset.cjs`, one
-   level above this skill):
+6. Check `.nsolid/assets/index.json` and `.nsolid/assets/` for the same baseline asset ID. If it is already present locally, reuse it and skip the download.
+7. If the baseline asset is not present, save it locally:
    ```
    node "<skill-dir>/../fetch-asset.cjs" <baselineAssetId> heapprofile <appName>
    ```
@@ -57,19 +50,12 @@ you think in terms of deltas, allocations over time, and retained heap curves.
 2. Use `track-heap-objects` if you suspect closures/retainers, otherwise standard `heap-sampling` for 60 seconds. Only use a full `snapshot` if absolutely necessary and the app is <256MB.
 3. Wait for the operation to complete:
    ```
-   node "<skill-dir>/wait.js" 60
+   node "<skill-dir>/wait.cjs" 60
    ```
-   Then call `assets-in-progress`. If still generating, run `wait.js 10` and check again.
+   Then call `assets-in-progress`. If still generating, run `wait.cjs 10` and check again.
 4. Pull the `asset-summary`.
-5. Treat that summary as the default peak artifact. Only download the raw heap
-   file if the summary is insufficient, the user asks for the file, or you need
-   a persisted local artifact.
-6. If you need a local copy, check `.nsolid/assets/index.json` and
-   `.nsolid/assets/` for the same peak asset ID. If it is already present
-   locally, reuse it and skip the download.
-7. If you still need a local copy and the peak asset is not present, save it
-   with the shared helper in the workspace root (`fetch-asset.cjs`, one level
-   above this skill):
+5. Check `.nsolid/assets/index.json` and `.nsolid/assets/` for the same peak asset ID. If it is already present locally, reuse it and skip the download.
+6. If the peak asset is not present, save it locally:
    ```
    node "<skill-dir>/../fetch-asset.cjs" <peakAssetId> heapprofile <appName>
    ```
@@ -88,12 +74,7 @@ you think in terms of deltas, allocations over time, and retained heap curves.
 4. Only after user approval, propose an optimized rewrite and use the `benchmark-validate` skill to verify the fix.
 
 ### Phase 6: Write a Report
-1. Create the markdown report directly under the project-root `.nsolid/assets/`
-   directory using an absolute filesystem path such as
-   `<workspace-root>/.nsolid/assets/memory-leak-hunt-<appName>.md`. Never use
-   a bare filename like `nsolid-report-leak.md`, never create the report in
-   `/tmp`, and never create `.nsolid/` inside an `agents/` folder.
-2. Use this structure for the report body:
+1. Present the full report to the user using this structure:
    ```markdown
    # Memory Leak Hunt Report — <appName>
    **Date**: <ISO date>
@@ -129,25 +110,10 @@ you think in terms of deltas, allocations over time, and retained heap curves.
    - Baseline heap profile: `.nsolid/assets/heapprofile-<appName>-<baselineAssetIdPrefix>.heapprofile`
    - Peak heap profile: `.nsolid/assets/heapprofile-<appName>-<peakAssetIdPrefix>.heapprofile`
    ```
-2. Run the save-report script to register that same absolute markdown path in
-   `.nsolid/assets/reports-index.json`:
-   ```
-   node "<skill-dir>/../save-report.cjs" memory-leak-hunt "Memory Leak Hunt Report — <appName>" "<workspace-root>/.nsolid/assets/memory-leak-hunt-<appName>.md"
-   ```
-3. The script prints the registered path. Tell the user that path and mention
-   both baseline and peak heap profiles if you downloaded them.
-4. This registration step is required. Do not leave the report only in the
-   chat reply.
-5. Do not describe `/tmp` as the saved report location.
 
 ## Guardrails
 - **No early assumptions**: Never declare a memory leak from a single snapshot. Always compare baseline to peak.
 - **Reuse what exists**: Do not capture a new baseline or peak sample if the
   user already supplied the needed assets.
-- Do not fetch raw heap profiles when the paired `asset-summary` results are
-   already enough for the delta analysis.
 - **Wait times**: Memory tools block the thread. Do not spam endpoints while an asset is in progress.
 - **Snapshot size limit**: `asset-summary` requires two API calls for snapshots, and will fail on dumps >256MB.
-- Do not leave the final analysis only in chat. Persist the report to
-   `.nsolid/assets/`.
-- Do not describe `/tmp` as the saved report location.

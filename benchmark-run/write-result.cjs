@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// write-result.js — writes benchmark JSON to .nsolid/benchmarks/ in the workspace root.
-// Usage: node write-result.js '<json-string>'
+// write-result.cjs — writes benchmark JSON to .nsolid/benchmarks/ in the workspace root.
+// Usage: node write-result.cjs '<json-string>'
 // No external dependencies — plain Node.js only.
 
 'use strict';
@@ -8,42 +8,9 @@
 const fs = require('fs');
 const path = require('path');
 
-function findWorkspaceRoot(startDir) {
-  let dir = startDir;
-
-  while (dir !== path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, '.vscode', 'settings.json'))) {
-      return dir;
-    }
-    if (fs.existsSync(path.join(dir, 'package.json'))) {
-      return dir;
-    }
-    dir = path.dirname(dir);
-  }
-
-  return null;
-}
-
-function resolveWorkspaceRoot() {
-  const candidates = [process.env.INIT_CWD, process.cwd(), path.resolve(__dirname)];
-
-  for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-
-    const workspaceRoot = findWorkspaceRoot(path.resolve(candidate));
-    if (workspaceRoot) {
-      return workspaceRoot;
-    }
-  }
-
-  return path.resolve(process.cwd());
-}
-
 const json = process.argv[2];
 if (!json) {
-  console.error('Usage: node write-result.js \'<json-string>\'');
+  console.error('Usage: node write-result.cjs \'<json-string>\'');
   process.exit(1);
 }
 
@@ -55,7 +22,7 @@ try {
   process.exit(1);
 }
 
-const workspaceRoot = resolveWorkspaceRoot();
+const workspaceRoot = process.cwd();
 const outputDir = path.join(workspaceRoot, '.nsolid', 'benchmarks');
 
 // Create .nsolid/benchmarks/ if it doesn't exist

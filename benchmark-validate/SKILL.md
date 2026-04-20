@@ -148,36 +148,38 @@ Note the returned `jobId` as `originalJobId`.
 
 ### 3. Wait
 
-Run the helper that sits beside this SKILL.md:
+Run the wait script (use the absolute path of the directory where you read this SKILL.md):
 
 ```
-node "<skill-dir>/wait.js" 20
+node "<skill-dir>/wait.cjs" 20
 ```
 
 ### 4. Get Original Result
 
-Call `get_benchmark_result` with `originalJobId`. If not yet `"completed"`, run `wait.js 5` and poll again.
+Call `get_benchmark_result` with `originalJobId`. If not yet `"completed"`, run `wait.cjs 5` and poll again.
 
 Save: `opsSec`, `opsSecPerRun`, `iterations`, `histogram`, `benchmarkConfig`.
 
-### 5. Run Optimized Benchmark
+### 5. Run Optimized Benchmark Attempts
 
-Call `run_benchmark` with:
-- `functionData`: `{ type, code, explanation, entryPoint, args, argSetupCode? }` for the **optimized**
+You must try the optimized implementation up to **3 total attempts** if the
+benchmark does not clear the effectiveness threshold on the first try.
+
+For each optimized attempt:
+- Build optimized `functionData`: `{ type, code, explanation, entryPoint, args, argSetupCode? }`
 - Use the **exact same** `args` and `argSetupCode` as the original
-- `isOptimized: true`
-
-Note the returned `jobId` as `optimizedJobId`.
+- Call `run_benchmark` with `isOptimized: true`
+- Note the returned `jobId` as `optimizedJobId`
 
 ### 6. Wait
 
 ```
-node "<skill-dir>/wait.js" 20
+node "<skill-dir>/wait.cjs" 20
 ```
 
 ### 7. Get Optimized Result
 
-Call `get_benchmark_result` with `optimizedJobId`. If not yet `"completed"`, run `wait.js 5` and poll again.
+Call `get_benchmark_result` with `optimizedJobId`. If not yet `"completed"`, run `wait.cjs 5` and poll again.
 
 Save: `opsSec`, `opsSecPerRun`, `iterations`, `histogram`.
 
@@ -190,10 +192,20 @@ Analyze:
 - `pValue`: must be < 0.05 to be statistically significant
 - `improvementPercent`: the percentage speed improvement
 
-### 9. Save to `.nsolid/benchmarks/`
+If the comparison is **not** `optimization_effective`:
+- inspect the benchmark evidence and your current optimized code
+- revise the optimized implementation to attack the remaining bottleneck
+- rerun only the optimized side with a new optimized attempt
+- keep the original benchmark as the baseline
+- stop early if an attempt reaches `optimization_effective`
+- otherwise continue until you have completed **3 optimized attempts total**
 
-This always means the project-root `.nsolid/benchmarks/` directory. Never
-create `.nsolid/` beside the skill or inside any `agents/` folder.
+If none of the 3 optimized attempts reaches the threshold:
+- report that clearly
+- still present the **best** optimized attempt you measured
+- make it explicit that the final result did not meet the effectiveness threshold
+
+### 9. Save to `.nsolid/benchmarks/`
 
 Build this JSON (fill in real values):
 
@@ -228,18 +240,38 @@ Build this JSON (fill in real values):
 }
 ```
 
-Run the write script. The helper resolves the project root from its own
-location, so do not improvise another output path:
+Run the write script (use the same `<skill-dir>` path):
 
 ```
-node "<skill-dir>/write-result.js" '<json-string>'
+node "<skill-dir>/write-result.cjs" '<json-string>'
 ```
 
-The script prints the output path. Report it to the user alongside the benchmark verdict.
+The script prints the output path. Report it to the user alongside the final
+benchmark verdict. If you made multiple optimized attempts, save and report the
+best final comparison you are standing behind.
+
+### 10. Emit Structured Apply Metadata
+
+After reporting the verdict, end the response with a single HTML comment
+containing the data the host extension needs to offer an "Apply optimization"
+action. Use the raw optimized source (unescaped newlines are fine inside a
+JSON string if you properly escape them), the final verdict flags, and any
+hot-function reference the extension provided in the prior CPU analysis.
+
+```
+<!-- nsentinel-optimized: {"code":"<optimized source>","entryPoint":"<entryPoint>","improvementPct":<number>,"pValue":<number>,"isSignificant":<bool>,"verdictEffective":<bool>} -->
+```
+
+Only emit the marker when a valid A/B comparison completed. If the benchmark
+failed, timed out, or the original/optimized code was unavailable, omit the
+marker entirely — the host extension will not offer the apply action.
 
 ## Guardrails
 
 - You MUST use the exact same `args` and `argSetupCode` for both runs — otherwise the comparison is statistically invalid.
-- NEVER skip the wait steps — always use `wait.js`, do not rely on estimating time.
+- NEVER skip the wait steps — always use `wait.cjs`, do not rely on estimating time.
 - A fix is not a fix until `compare_benchmarks` returns `"optimization_effective"`.
 - NEVER poll immediately after submitting a benchmark — always wait first.
+- If an optimized attempt does not pass the threshold, do not stop after one
+  miss. Revise the optimized code and retry until you either succeed or finish
+  3 optimized attempts total.

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-// fetch-asset.cjs — Downloads a full N|Solid asset (CPU profile, heap snapshot,
+// fetch-asset.js — Downloads a full N|Solid asset (CPU profile, heap snapshot,
 // heap sampling) from the console API and saves it to .nsolid/assets/.
 //
 // Usage:
-//   node fetch-asset.cjs <assetId> <assetType> [appName]
+//   node fetch-asset.js <assetId> <assetType> [appName]
 //
 // Arguments:
 //   assetId   — The asset ID returned by the profile/snapshot/heap-sampling MCP tool
@@ -12,8 +12,7 @@
 //   appName   — (Optional) Application name for the filename, defaults to "unknown"
 //
 // The script reads the console URL and service token from .vscode/settings.json
-// in the workspace root. It prefers the caller's working tree and falls back to
-// the script location when needed.
+// in the workspace root (walks up from its own location to find it).
 //
 // Output files:
 //   .nsolid/assets/<assetType>-<appName>-<assetIdPrefix>.<ext>
@@ -179,16 +178,10 @@ function findWorkspaceRoot (startDir) {
 }
 
 function resolveWorkspaceRoot () {
-  const candidates = [
-    process.env.INIT_CWD,
-    process.cwd(),
-    path.resolve(__dirname)
-  ]
+  const candidates = [process.env.INIT_CWD, process.cwd(), path.resolve(__dirname)]
 
   for (const candidate of candidates) {
-    if (!candidate) {
-      continue
-    }
+    if (!candidate) continue
 
     const workspaceRoot = findWorkspaceRoot(path.resolve(candidate))
     if (workspaceRoot) {
@@ -312,7 +305,7 @@ async function main () {
   const [,, assetId, assetType, appName = 'unknown'] = process.argv
 
   if (!assetId || !assetType) {
-    console.error('Usage: node fetch-asset.cjs <assetId> <assetType> [appName]')
+    console.error('Usage: node fetch-asset.js <assetId> <assetType> [appName]')
     console.error('  assetType: cpuprofile | heapprofile | heapsnapshot')
     process.exit(1)
   }

@@ -11,8 +11,8 @@ const ROOT = path.resolve(__dirname, '..')
 const BENCHMARKS_DIR = path.join(ROOT, '.nsolid', 'benchmarks')
 const GITIGNORE_PATH = path.join(ROOT, '.gitignore')
 const WRITE_RESULT_SCRIPTS = [
-  path.join(ROOT, 'benchmark-run', 'write-result.js'),
-  path.join(ROOT, 'benchmark-validate', 'write-result.js')
+  path.join(ROOT, 'benchmark-run', 'write-result.cjs'),
+  path.join(ROOT, 'benchmark-validate', 'write-result.cjs')
 ]
 
 function run (script, args, cwd = ROOT) {
@@ -58,7 +58,7 @@ for (const script of WRITE_RESULT_SCRIPTS) {
   test(`${scriptLabel} exits with usage when no JSON is provided`, () => {
     const result = run(script, [])
     assert.strictEqual(result.status, 1)
-    assert.match(result.stderr, /Usage: node write-result\.js/)
+    assert.match(result.stderr, /Usage: node write-result\.cjs/)
   })
 
   test(`${scriptLabel} exits with error for invalid JSON`, () => {
@@ -106,54 +106,4 @@ for (const script of WRITE_RESULT_SCRIPTS) {
     })
   })
 
-  test(`${scriptLabel} writes to the project root even when invoked from a nested directory`, async () => {
-    await withBenchmarkState(() => {
-      const nestedCwd = path.dirname(script)
-      const payload = JSON.stringify({
-        functionName: 'nested cwd',
-        result: { opsSec: 99 }
-      })
-
-      const result = run(script, [payload], nestedCwd)
-      assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
-
-      const outputPath = result.stdout.trim()
-      assert.ok(outputPath.startsWith(BENCHMARKS_DIR + path.sep), `Unexpected output path: ${outputPath}`)
-      assert.ok(fs.existsSync(outputPath))
-
-      const nestedBenchmarksDir = path.join(nestedCwd, '.nsolid', 'benchmarks')
-      assert.ok(!fs.existsSync(nestedBenchmarksDir), `Nested .nsolid directory should not exist: ${nestedBenchmarksDir}`)
-    })
-  })
-
-  test(`${scriptLabel} prefers the caller workspace when installed under .agents/skills`, () => {
-    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'write-result-installed-'))
-    const installedDir = path.join(projectRoot, '.agents', 'skills', path.basename(path.dirname(script)))
-    const installedScript = path.join(installedDir, path.basename(script))
-
-    try {
-      fs.mkdirSync(installedDir, { recursive: true })
-      fs.copyFileSync(script, installedScript)
-      fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"consumer-workspace"}\n')
-      fs.writeFileSync(path.join(projectRoot, '.agents', 'skills', 'package.json'), '{"name":"installed-skills"}\n')
-
-      const payload = JSON.stringify({
-        functionName: 'installed worker',
-        result: { opsSec: 42 }
-      })
-
-      const result = run(installedScript, [payload], projectRoot)
-      assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
-
-      const outputPath = result.stdout.trim()
-      const expectedDir = path.join(projectRoot, '.nsolid', 'benchmarks')
-      assert.ok(outputPath.startsWith(expectedDir + path.sep), `Unexpected output path: ${outputPath}`)
-      assert.ok(fs.existsSync(outputPath))
-
-      const nestedBenchmarksDir = path.join(projectRoot, '.agents', 'skills', '.nsolid', 'benchmarks')
-      assert.ok(!fs.existsSync(nestedBenchmarksDir), `Installed skill dir should not get benchmarks: ${nestedBenchmarksDir}`)
-    } finally {
-      fs.rmSync(projectRoot, { recursive: true, force: true })
-    }
-  })
 }

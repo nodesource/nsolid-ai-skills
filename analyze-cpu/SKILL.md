@@ -29,9 +29,7 @@ says read-only, offline, or no-capture.
 - If the prompt is a telemetry alert such as "CPU spike 121.1% in app X", use
   that app name as authoritative scope and immediately run the live workflow:
   identify the hottest connected agent inside that app, capture a 30-second CPU
-  profile, summarize it, and fetch runtime code when possible. Download the raw
-  profile only if the summary is insufficient, the user asks for the file, or
-  you need a saved artifact for later review.
+  profile, summarize it, download it, and fetch runtime code when possible.
 - In telemetry-alert mode, do not stop after rediscovering the same spike and
   do not ask for capture approval unless the prompt explicitly says read-only,
   offline, or no-capture.
@@ -76,120 +74,153 @@ says read-only, offline, or no-capture.
 - For telemetry-alert mode, this 30-second profile capture is the default path.
 
 ### 6. Wait (Critical)
-- Run the wait script using the `duration` you passed to `profile` (normally
-  `30` seconds for this skill).
-- Use the helper that sits beside this SKILL.md. Do not guess another path or
-  borrow one from a different repo.
-  ```
-  node "<skill-dir>/wait.js" <duration>
-  ```
+- After starting the standard 30-second CPU profile, call the `nsolid_wait`
+  tool with `{ "seconds": 35 }` so the capture has time to finish and upload.
+- If you used a different profile duration, wait that duration plus 5 seconds.
+- Do NOT use shell commands, `node wait.cjs`, or `setTimeout`. The only way to
+  wait inside this skill is the `nsolid_wait` tool.
 
-### 7. Monitor Profile Generation
-- Call `assets-in-progress`. If your Asset ID is still listed, run `wait.js 5` and check again.
+### 7. Check Readiness Using the Exact Asset ID
+- Call `asset-summary` using the exact Asset ID returned by `profile`.
+- If `asset-summary` says the asset is not ready yet, call `nsolid_wait` with
+  `{ "seconds": 5 }` and retry `asset-summary` on that same Asset ID.
+- Retry at most 2 short waits after the initial 35-second wait. If the asset is
+  still not ready, explain that clearly rather than looping indefinitely.
+- Do NOT use `assets-in-progress` as the normal readiness check for CPU
+  profiles. It is a global queue and may report unrelated assets.
 
 ### 8. Summarize the Profile
-- Once complete, call `asset-summary` using your Asset ID. Treat that JSON as
-  the default analysis artifact because it is the lowest-token view.
-- If the summary already exposes a valid culprit, continue directly to culprit
-  identification and `runtime-code` extraction.
-- Only fetch the raw `.cpuprofile` when the summary is insufficient, the user
-  explicitly asks for the file, or you need to persist it for later manual
-  inspection or reporting.
+- Once `asset-summary` succeeds, use its token-optimized JSON view as the
+  grounded source for the rest of the workflow.
+- Do not stop after `asset-summary`; continue the workflow with full profile
+  download and runtime code extraction.
 
-### 9. Save the Full Profile Only When Needed
-- Skip this step unless the summary was insufficient, the user asked for the
-  raw file, or you need a persisted local artifact.
-- Before downloading, check `.nsolid/assets/index.json` and `.nsolid/assets/`
-  for the same `assetId`. If the asset is already present locally, reuse it and
-  skip the download.
-- If the asset is not present, run the shared fetch helper in the workspace
-  root. The filename is `fetch-asset.cjs`, not `fetch-asset.js`. From this
-  skill directory it is one level up. Do not look under `agents/skills` or any
-  other repo copy.
-  ```
-  node "<skill-dir>/../fetch-asset.cjs" <assetId> cpuprofile <appName>
-  ```
-- The helper saves assets flat in `.nsolid/assets/` as
-  `cpuprofile-<appName>-<assetIdPrefix>.cpuprofile`, updates
-  `.nsolid/assets/index.json`, and no-ops if the asset was already downloaded.
+### 9. Save the Full Profile
+- Call the `nsolid_downloadAsset` tool with `{ "assetId": "<id>", "kind":
+  "cpuprofile", "appName": "<app>" }`. The tool is idempotent: if the asset is
+  already present in `.nsolid/assets/index.json`, it returns the existing path
+  without re-downloading.
+- Do NOT use shell commands, `node fetch-asset.cjs`, or direct HTTP calls.
+  `nsolid_downloadAsset` is the only supported download path inside this skill.
+- The tool writes to `.nsolid/assets/cpuprofile-<appName>-<assetIdPrefix>.cpuprofile`
+  and updates the index automatically.
 
 ### 10. Identify the Culprit
 - Analyze the summary JSON or local profile data. Identify the function
   (`functionName`), `scriptId`, and file path (`url`) consuming the highest
   `totalTime` or `selfTime`. Explain this to the user.
+- Focus the diagnosis on the hottest relevant **user-owned** frame.
+- If the top cost is in Node internals or a dependency, report that clearly as
+  evidence, but walk down or up the hot path to the nearest meaningful
+  user-owned caller so the user gets an actionable explanation.
+- If a dependency is causing the cost, explain how the user's code is invoking
+  it, feeding it, or calling it too often. Do not treat dependency source as
+  the optimization target.
 - If the current evidence is insufficient to isolate a function, say exactly
   what is missing instead of pretending you have a bottleneck.
 
 ### 11. Extract Runtime Code
-- After identifying the hottest real user-code frame, call `runtime-code` using
-  the agent `id`, `threadId`, `scriptId`, and `url` (as the path) to extract
-  the exact JavaScript source code from the V8 runtime.
+- After identifying the hottest relevant **user-owned** frame, call
+  `runtime-code` using the agent `id`, `threadId`, `scriptId`, and `url` (as
+  the path) to extract the exact JavaScript source code from the V8 runtime.
 - Prefer the hottest non-internal application frame. If the top frame is V8 or
   Node internals, walk down to the hottest frame that points to the user app.
+- NEVER fetch or present runtime code for Node internals or dependency code.
+  If the hottest frame is under `node_modules`, `node:`, or internal runtime
+  paths, explain the dependency/internal cost and move to the nearest relevant
+  user-owned caller instead of extracting dependency source.
+- The `runtime-code` response is raw source material. Before presenting it in
+  the report, keep only the most relevant parts needed to explain the CPU
+  problem in the app and to ground the optimization proposal.
+- Include the hot function and any nearby helpers, branches, loops, constants,
+  or call sites that materially affect the bottleneck.
+- Exclude unrelated module setup, imports, exports, sibling functions, or large
+  sections of the file that do not help explain the issue.
+- Do not force an artificially tiny excerpt. Keep enough surrounding context to
+  make the diagnosis and recommendation understandable.
+- Retry up to 2 times with path tweaks if the first call fails:
+  - Try stripping a leading `/app` or `/usr/src/app` Docker prefix.
+  - Try removing a leading path segment one level at a time.
+  - If still failing after 2 tweaks, skip and proceed to step 12 with a note
+    that runtime code was unavailable.
 - **Edge cases**:
-  - If `scriptId` is `0`, extraction will fail — do not call the tool.
-  - If the process is Dockerized, the `path` might be misaligned. Try up to 2 path tweaks maximum.
-  - If extraction still fails, stop and ask the user to provide the source code.
+  - If `scriptId` is `0`, skip this step entirely — extraction will fail.
+  - If the process is Dockerized, the `path` may be misaligned; apply the path
+    tweaks above before giving up.
 
-### 12. Human in the Loop
-- Show the user the bottleneck, the runtime code, and the root cause. Include
-  the saved profile path only if you actually downloaded the raw profile.
-- End with a human-in-the-loop question in this shape:
-  *"I found the hot function and captured the supporting profile. Do you want me
-  to continue with optimization and then benchmark the before/after result?"*
-- Do not jump into optimization until the user says yes.
+### 12. Compare Runtime Code to Workspace Source
+- **Precondition — verify the workspace matches the app first.** Read
+  `package.json` at the workspace root. If `name` in `package.json` does NOT
+  match the profiled app name (exact string match, case-insensitive), SKIP
+  this entire step and write "Workspace does not match profiled app
+  (`<workspace-name>` vs `<app-name>`) — comparison skipped." in the report.
+  Do NOT guess, do NOT claim files match when the workspace is a different
+  project. A false match is worse than no match.
+- Only if the `package.json` name matches, proceed:
+  - Only attempt this step for user-owned application code. If the hot frame is
+    a dependency or Node internal path, skip comparison and say that the
+    performance issue originates outside user-owned source.
+  - Check if the culprit file `url` (or its Docker-adjusted equivalent) maps
+    to a file in the current workspace. Strip common Docker prefixes (`/app`,
+    `/usr/src/app`, `/home/node/app`) from `url`, then verify the resulting
+    path exists under the workspace root (use a file-existence check, not a
+    guess based on pathname).
+  - If the file exists, read the local copy and diff against the runtime
+    version. Note real differences: added logic, removed guards, changed
+    thresholds, dependency bumps, etc.
+  - Identify whether the hot function is still present, renamed, or refactored.
+  - Include a "local vs. runtime delta" section in the final report with the
+    actual diff content, not a paraphrase.
+  - If the file does not exist locally even though the package name matched,
+    say so explicitly (e.g., "file exists in runtime but not in workspace —
+    likely built/transpiled output").
+- Do not block the report on a missing workspace match. A missing match is
+  useful information, not a blocker.
 
-### 13. Write a Report
-1. Create the markdown report directly under the project-root `.nsolid/assets/`
-  directory using an absolute filesystem path such as
-  `<workspace-root>/.nsolid/assets/cpu-analysis-<appName>-<assetIdPrefix>.md`.
-  Never use a bare filename like `nsolid-report-cpu.md`, never create the
-  report in `/tmp`, and never create `.nsolid/` inside an `agents/` folder.
-2. Use this structure for the report body:
-   ```markdown
-   # CPU Analysis Report — <appName>
-   **Date**: <ISO date>
-   **Agent ID**: <id>
-   **Duration**: <profile duration>s
-
-   ## Summary
-   <Brief description of the bottleneck found>
-
-   ## Top CPU Consumers
-   | Function | File | Self Time | Total Time | % of Total |
-   |----------|------|-----------|------------|------------|
-   | <functionName> | <url>:<line> | <selfTime>s | <totalTime>s | <pct>% |
-
-   ## Hot Call Path
-   ```
-   <call stack from request to bottleneck function>
-   ```
-
-   ## Root Cause
-   <Explanation of why this function is expensive>
-
-   ## Recommendation
-   <Proposed fix or optimization>
-
-   ## Assets
-  - Asset summary ID: `<assetId>`
-  - Full CPU profile: `<path if downloaded, otherwise 'not downloaded'>`
-   ```
-3. Run the save-report script to register that same absolute markdown path in
-  `.nsolid/assets/reports-index.json`:
-   ```
-  node "<skill-dir>/../save-report.cjs" cpu-analysis "CPU Analysis Report — <appName>" "<workspace-root>/.nsolid/assets/cpu-analysis-<appName>-<assetIdPrefix>.md"
-   ```
-4. The script prints the registered path. Tell the user the report path.
-  Mention the local `.cpuprofile` path only if you downloaded it.
-5. This registration step is required. Do not leave the report only in the
-  chat reply.
-6. Do not describe `/tmp` as the saved report location.
+### 13. Present the Full Report
+- Structure the final report with these sections:
+  1. **Executive Summary** — one paragraph stating the CPU problem and root cause.
+  2. **Top CPU Consumers** — table with: `functionName`, `file:line`, `selfTime`, `totalTime`.
+  3. **Hot Call Path** — the function call chain leading to the bottleneck.
+  4. **Runtime Code** — the most relevant extracted source from step 11 (or a
+     note if unavailable), not the whole fetched file or module.
+     This section must contain only user-owned application code. If the hottest
+     cost is in a dependency or Node internals, replace this section with a
+     short note that user-owned runtime code could not be extracted for that
+     hotspot and explain the nearest relevant user-owned caller instead.
+     Wrap the code block with these exact HTML comment markers so the host
+     extension can locate it:
+     ```
+     <!-- nsentinel-runtime-code-start -->
+     ```language
+     <relevant source here>
+     ```
+     <!-- nsentinel-runtime-code-end -->
+     ```
+  5. **Workspace Delta** (if applicable from step 12) — local vs. runtime diff and analysis.
+  6. **Root Cause** — the specific reason this code is expensive (algorithmic, I/O, serialization, etc.).
+  7. **Recommendation** — concrete fix advice with code-level specifics when possible.
+     When a dependency is the main cost source, recommend changes in the user's
+     call pattern, batching, caching, input size, or library choice. Do not
+     recommend rewriting dependency source.
+  8. **Profile Reference** — the saved `.cpuprofile` path from step 9.
+- End the report with a structured metadata comment on its own line so the host
+  extension can drive the followup flow. Use workspace-relative forward-slash
+  paths and 1-indexed inclusive line numbers:
+  ```
+  <!-- nsentinel-hotfn: {"file":"src/foo.ts","startLine":42,"endLine":80,"name":"parseToken"} -->
+  ```
+  If the hot function could not be mapped to a workspace file (Workspace Delta
+  reported "file exists in runtime but not in workspace"), omit the marker
+  entirely rather than emit a placeholder.
+- The host extension persists the presented markdown to `.nsolid/assets/` automatically. Do not call any save tool or shell script.
 
 ### 14. Validate the Fix
-- Once the user approves optimization and an improved version is written, use
-  the `benchmark-validate` skill to run a scientific A/B benchmark comparing
-  the original and optimized code.
+- The host extension presents followup buttons after the report. When the user
+  clicks "Continue with optimization & benchmark", the extension invokes the
+  `benchmark-validate` skill with this report in scope. Those followups are for
+  actionable user-owned code only. Do not ask a human-in-the-loop question in
+  this response — the buttons replace it.
 
 ## Guardrails
 - NEVER call `global-filter` as a discovery step.
@@ -198,9 +229,15 @@ says read-only, offline, or no-capture.
   requested read-only/offline behavior.
 - NEVER call discovery tools only to restate the same app and spike value the
   user already provided; continue to the target-agent selection and profile.
-- If you do not wait the required `duration`, the profiler will fail or you will waste tokens polling empty states.
-- Do not fetch a raw profile when `asset-summary` already answers the question.
-- Do not leave the final analysis only in chat. Persist the report to
-  `.nsolid/assets/`.
-- Do not describe `/tmp` as the saved report location.
+- NEVER shell out (`node wait.cjs`, `node fetch-asset.cjs`, `setTimeout`,
+  `sleep`, curl, etc.). Use `nsolid_wait` and `nsolid_downloadAsset` only —
+  these are the supported tools inside this environment.
+- NEVER paste the entire `runtime-code` response when only part of it is
+  relevant. Keep the report focused on the code that explains the problem and
+  proposed fix.
+- NEVER fetch or present dependency or Node-internal source as the code to
+  optimize. Treat those frames as evidence, then explain the nearest relevant
+  user-owned caller instead.
+- If you do not wait long enough with `nsolid_wait`, `asset-summary` may still
+  report that the profile asset is not ready.
 - A fix is not a fix until it is proven by benchmarking.
