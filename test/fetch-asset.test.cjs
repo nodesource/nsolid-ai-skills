@@ -2,8 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { spawnSync, spawn } = require('node:child_process')
-const http = require('node:http')
+const { spawnSync } = require('node:child_process')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
@@ -16,63 +15,55 @@ const ROOT = path.resolve(__dirname, '..')
 const ASSETS_DIR = path.join(ROOT, '.nsolid', 'assets')
 const VSCODE_DIR = path.join(ROOT, '.vscode')
 const SETTINGS_PATH = path.join(VSCODE_DIR, 'settings.json')
+const FETCH_PRELOAD = path.join(__dirname, 'helpers', 'mock-fetch.cjs')
 
-function run (SCRIPT, args) {
-  return spawnSync(process.execPath, [SCRIPT, ...args], {
+function appendNodeOption (existing, option) {
+  return existing ? `${existing} ${option}` : option
+}
+
+function createFetchMock (routes) {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fetch-asset-mock-'))
+  const configPath = path.join(tempDir, 'config.json')
+  const requestsPath = path.join(tempDir, 'requests.ndjson')
+
+  fs.writeFileSync(configPath, JSON.stringify({ routes }, null, 2))
+
+  return {
+    env: {
+      NSOLID_FETCH_MOCK_FILE: configPath,
+      NSOLID_FETCH_REQUESTS_FILE: requestsPath,
+      NODE_OPTIONS: appendNodeOption(process.env.NODE_OPTIONS, `--require=${FETCH_PRELOAD}`)
+    },
+    readRequests () {
+      if (!fs.existsSync(requestsPath)) {
+        return []
+      }
+
+      return fs.readFileSync(requestsPath, 'utf-8')
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map(line => JSON.parse(line))
+    },
+    cleanup () {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  }
+}
+
+function run (script, args, options = {}) {
+  return spawnSync(process.execPath, [script, ...args], {
+    cwd: options.cwd || ROOT,
+    env: { ...process.env, ...options.env },
     encoding: 'utf-8',
     timeout: 15_000
   })
 }
 
-// spawnSync blocks the Node.js event loop, which prevents an in-process HTTP
-// server from responding. Use runAsync (spawn-based) for tests that need one.
-function runAsync (SCRIPT, args, opts = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [SCRIPT, ...args], opts)
-    let stdout = ''
-    let stderr = ''
-    const timer = setTimeout(() => {
-      child.kill()
-      reject(new Error('child process timed out'))
-    }, 15_000)
-
-    child.stdout.on('data', d => { stdout += d.toString() })
-    child.stderr.on('data', d => { stderr += d.toString() })
-    child.on('close', code => {
-      clearTimeout(timer)
-      resolve({ status: code, stdout, stderr })
-    })
-    child.on('error', error => {
-      clearTimeout(timer)
-      reject(error)
-    })
-  })
+function outputOf (result) {
+  return `${result.stdout}${result.stderr}`
 }
 
-function runScriptAsync (script, args, opts = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [script, ...args], opts)
-    let stdout = ''
-    let stderr = ''
-    const timer = setTimeout(() => {
-      child.kill()
-      reject(new Error('child process timed out'))
-    }, 15_000)
-
-    child.stdout.on('data', d => { stdout += d.toString() })
-    child.stderr.on('data', d => { stderr += d.toString() })
-    child.on('close', code => {
-      clearTimeout(timer)
-      resolve({ status: code, stdout, stderr })
-    })
-    child.on('error', error => {
-      clearTimeout(timer)
-      reject(error)
-    })
-  })
-}
-
-// Temporarily write a settings.json, run fn, then restore original state.
 async function withSettings (content, fn) {
   const existed = fs.existsSync(SETTINGS_PATH)
   const original = existed ? fs.readFileSync(SETTINGS_PATH, 'utf-8') : null
@@ -83,14 +74,14 @@ async function withSettings (content, fn) {
   } finally {
     if (original !== null) {
       fs.writeFileSync(SETTINGS_PATH, original)
-    } else {
+    } else if (fs.existsSync(SETTINGS_PATH)) {
       fs.rmSync(SETTINGS_PATH)
     }
   }
 }
 
-function readAssetIndex () {
-  const indexPath = path.join(ASSETS_DIR, 'index.json')
+function readAssetIndex (assetsDir = ASSETS_DIR) {
+  const indexPath = path.join(assetsDir, 'index.json')
   if (!fs.existsSync(indexPath)) {
     return []
   }
@@ -123,11 +114,13 @@ async function withCleanAssets (fn) {
   }
 }
 
-// Temporarily remove settings.json, run fn, then restore.
 async function withoutSettings (fn) {
   const existed = fs.existsSync(SETTINGS_PATH)
   const original = existed ? fs.readFileSync(SETTINGS_PATH, 'utf-8') : null
-  if (existed) fs.rmSync(SETTINGS_PATH)
+  if (existed) {
+    fs.rmSync(SETTINGS_PATH)
+  }
+
   try {
     return await fn()
   } finally {
@@ -138,278 +131,248 @@ async function withoutSettings (fn) {
   }
 }
 
-// Start an HTTP server, resolve with { server, port }, and let fn use it.
-async function withServer (handler, fn) {
-  const server = http.createServer(handler)
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
-  const { port } = server.address()
-  try {
-    return await fn(port)
-  } finally {
-    await new Promise(resolve => server.close(resolve))
-  }
-}
-
 for (const SCRIPT of FETCH_ASSET_SCRIPTS) {
-const scriptName = path.basename(path.dirname(SCRIPT)) + '/' + path.basename(SCRIPT)
-test(`${scriptName} - exits with usage message when no arguments provided`, () => {
-  const result = run(SCRIPT, [])
-  assert.strictEqual(result.status, 1)
-  assert.match(result.stderr, /Usage:/)
-})
+  const scriptName = path.basename(path.dirname(SCRIPT)) + '/' + path.basename(SCRIPT)
 
-test(`${scriptName} - exits with error for unknown asset type`, () => {
-  const result = run(SCRIPT, ['some-asset-id', 'badtype'])
-  assert.strictEqual(result.status, 1)
-  assert.match(result.stderr, /Unknown asset type/)
-})
-
-test(`${scriptName} - exits with error when .vscode/settings.json is missing`, async () => {
-  await withoutSettings(() => {
-    const result = run(SCRIPT, ['some-asset-id', 'cpuprofile'])
+  test(`${scriptName} exits with usage message when no arguments provided`, () => {
+    const result = run(SCRIPT, [])
     assert.strictEqual(result.status, 1)
-    assert.match(result.stderr, /Cannot find .vscode\/settings\.json/)
   })
-})
 
-test(`${scriptName} - exits with error when nsolid.apiBaseUrl is missing from settings`, async () => {
-  await withSettings({ 'nsolid.authToken': 'token' }, () => {
-    const result = run(SCRIPT, ['some-asset-id', 'cpuprofile'])
+  test(`${scriptName} exits with error for unknown asset type`, () => {
+    const result = run(SCRIPT, ['some-asset-id', 'badtype'])
     assert.strictEqual(result.status, 1)
-    assert.match(result.stderr, /Missing "nsolid\.consoleUrl" or legacy "nsolid\.apiBaseUrl"/)
   })
-})
 
-test(`${scriptName} - exits with error when nsolid.authToken is missing from settings`, async () => {
-  await withSettings({ 'nsolid.apiBaseUrl': 'http://localhost:9000' }, () => {
-    const result = run(SCRIPT, ['some-asset-id', 'cpuprofile'])
-    assert.strictEqual(result.status, 1)
-    assert.match(result.stderr, /Missing "nsolid\.serviceToken" or legacy "nsolid\.authToken"/)
+  test(`${scriptName} exits with error when .vscode/settings.json is missing`, async () => {
+    await withoutSettings(() => {
+      const result = run(SCRIPT, ['some-asset-id', 'cpuprofile'])
+      assert.strictEqual(result.status, 1)
+    })
   })
-})
 
-test(`${scriptName} - accepts modern settings keys and JSONC formatting`, async () => {
-  const assetId = 'test-settings-modern'
-  const assetContent = '{"type":"cpuprofile","nodes":[]}'
+  test(`${scriptName} exits with error when nsolid.apiBaseUrl is missing from settings`, async () => {
+    await withSettings({ 'nsolid.authToken': 'token' }, () => {
+      const result = run(SCRIPT, ['some-asset-id', 'cpuprofile'])
+      assert.strictEqual(result.status, 1)
+    })
+  })
 
-  await withCleanAssets(async () => {
-    await withServer(
-      (req, res) => {
-        if (req.url === `/api/v3/asset/${assetId}`) {
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(assetContent)
-          return
-        }
+  test(`${scriptName} exits with error when nsolid.authToken is missing from settings`, async () => {
+    await withSettings({ 'nsolid.apiBaseUrl': 'http://localhost:9000' }, () => {
+      const result = run(SCRIPT, ['some-asset-id', 'cpuprofile'])
+      assert.strictEqual(result.status, 1)
+    })
+  })
 
-        res.writeHead(404)
-        res.end()
-      },
-      async (port) => {
+  test(`${scriptName} accepts modern settings keys and JSONC formatting`, async () => {
+    const assetId = 'test-settings-modern'
+    const assetContent = '{"type":"cpuprofile","nodes":[]}'
+    const mock = createFetchMock({
+      [`http://127.0.0.1:9911/api/v3/asset/${assetId}`]: {
+        status: 200,
+        statusText: 'OK',
+        body: assetContent
+      }
+    })
+
+    try {
+      await withCleanAssets(async () => {
         await withSettings(`{
   // Preferred keys
-  "nsolid.consoleUrl": "http://127.0.0.1:${port}",
+  "nsolid.consoleUrl": "http://127.0.0.1:9911",
   "nsolid.serviceToken": "test-token",
 }`,
         async () => {
-          const result = await runAsync(SCRIPT, [assetId, 'cpuprofile', 'modern/a'])
-          assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
-          assert.match(result.stdout, /Asset saved to:/)
+          const result = run(SCRIPT, [assetId, 'cpuprofile', 'modern/a'], { env: mock.env })
+          assert.strictEqual(result.status, 0, `output: ${outputOf(result)}`)
+
+          const requests = mock.readRequests()
+          assert.strictEqual(requests.length, 1)
+          assert.strictEqual(requests[0].url, `http://127.0.0.1:9911/api/v3/asset/${assetId}`)
+          assert.strictEqual(requests[0].headers['x-nsolid-service-token'], 'test-token')
 
           const entry = readAssetIndex().find(record => record.assetId === assetId)
           assert.ok(entry)
           assert.strictEqual(entry.app, 'modern/a')
           assert.strictEqual(entry.localPath, 'cpuprofile-modern_a-test-set.cpuprofile')
         })
-      }
-    )
+      })
+    } finally {
+      mock.cleanup()
+    }
   })
-})
 
-test(`${scriptName} - downloads asset and saves to flat asset path with index metadata`, async () => {
-  const ASSET_ID = 'test-asset-abc123'
-  const ASSET_CONTENT = '{"type":"cpuprofile","nodes":[]}'
-  const savedPath = path.join(ASSETS_DIR, 'cpuprofile-myapp-test-ass.cpuprofile')
+  test(`${scriptName} downloads asset and saves to flat asset path with index metadata`, async () => {
+    const assetId = 'test-asset-abc123'
+    const assetContent = '{"type":"cpuprofile","nodes":[]}'
+    const savedPath = path.join(ASSETS_DIR, 'cpuprofile-myapp-test-ass.cpuprofile')
+    const mock = createFetchMock({
+      [`http://127.0.0.1:9912/api/v3/asset/${assetId}`]: {
+        status: 200,
+        statusText: 'OK',
+        body: assetContent
+      }
+    })
 
-  await withCleanAssets(async () => {
-    await withServer(
-      (req, res) => {
-        if (req.url === `/api/v3/asset/${ASSET_ID}`) {
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(ASSET_CONTENT)
-        } else {
-          res.writeHead(404)
-          res.end()
-        }
-      },
-      async (port) => {
+    try {
+      await withCleanAssets(async () => {
         await withSettings(
-          { 'nsolid.apiBaseUrl': `http://127.0.0.1:${port}`, 'nsolid.authToken': 'test-token' },
+          { 'nsolid.apiBaseUrl': 'http://127.0.0.1:9912', 'nsolid.authToken': 'test-token' },
           async () => {
-            const result = await runAsync(SCRIPT, [ASSET_ID, 'cpuprofile', 'myapp'])
-            assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
-            assert.match(result.stdout, /Asset saved to:/)
+            const result = run(SCRIPT, [assetId, 'cpuprofile', 'myapp'], { env: mock.env })
+            assert.strictEqual(result.status, 0, `output: ${outputOf(result)}`)
 
             assert.ok(fs.existsSync(savedPath), `Expected file not found: ${savedPath}`)
-            assert.strictEqual(fs.readFileSync(savedPath, 'utf-8'), ASSET_CONTENT)
+            assert.strictEqual(fs.readFileSync(savedPath, 'utf-8'), assetContent)
 
-            const entry = readAssetIndex().find(record => record.assetId === ASSET_ID)
+            const entry = readAssetIndex().find(record => record.assetId === assetId)
             assert.ok(entry)
             assert.strictEqual(entry.name, 'cpuprofile-myapp-test-ass')
             assert.strictEqual(entry.type, 'cpu-profile')
             assert.strictEqual(entry.app, 'myapp')
             assert.strictEqual(entry.localPath, 'cpuprofile-myapp-test-ass.cpuprofile')
-            assert.strictEqual(entry.fileSize, Buffer.byteLength(ASSET_CONTENT))
+            assert.strictEqual(entry.fileSize, Buffer.byteLength(assetContent))
             assert.match(entry.downloadedAt, /^\d{4}-\d{2}-\d{2}T/)
           }
         )
-      }
-    )
+      })
+    } finally {
+      mock.cleanup()
+    }
   })
-})
 
-test(`${scriptName} - uses "unknown" as default app name when omitted`, async () => {
-  const ASSET_ID = 'test-asset-default'
-  const ASSET_CONTENT = '{}'
-  const savedPath = path.join(ASSETS_DIR, 'heapprofile-unknown-test-ass.heapprofile')
+  test(`${scriptName} uses "unknown" as default app name when omitted`, async () => {
+    const assetId = 'test-asset-default'
+    const assetContent = '{}'
+    const savedPath = path.join(ASSETS_DIR, 'heapprofile-unknown-test-ass.heapprofile')
+    const mock = createFetchMock({
+      [`http://127.0.0.1:9913/api/v3/asset/${assetId}`]: {
+        status: 200,
+        statusText: 'OK',
+        body: assetContent
+      }
+    })
 
-  await withCleanAssets(async () => {
-    await withServer(
-      (req, res) => {
-        res.writeHead(200)
-        res.end(ASSET_CONTENT)
-      },
-      async (port) => {
+    try {
+      await withCleanAssets(async () => {
         await withSettings(
-          { 'nsolid.apiBaseUrl': `http://127.0.0.1:${port}`, 'nsolid.authToken': 'test-token' },
+          { 'nsolid.apiBaseUrl': 'http://127.0.0.1:9913', 'nsolid.authToken': 'test-token' },
           async () => {
-            const result = await runAsync(SCRIPT, [ASSET_ID, 'heapprofile'])
-            assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
+            const result = run(SCRIPT, [assetId, 'heapprofile'], { env: mock.env })
+            assert.strictEqual(result.status, 0, `output: ${outputOf(result)}`)
 
             assert.ok(fs.existsSync(savedPath))
 
-            const entry = readAssetIndex().find(record => record.assetId === ASSET_ID)
+            const entry = readAssetIndex().find(record => record.assetId === assetId)
             assert.ok(entry)
             assert.strictEqual(entry.app, 'unknown')
             assert.strictEqual(entry.localPath, 'heapprofile-unknown-test-ass.heapprofile')
           }
         )
-      }
-    )
+      })
+    } finally {
+      mock.cleanup()
+    }
   })
-})
 
-test(`${scriptName} - migrates a legacy nested asset into the flat layout`, async () => {
-  const assetId = 'legacy-asset-123456'
-  const legacyDir = path.join(ASSETS_DIR, 'legacyapp')
-  const legacyPath = path.join(legacyDir, `${assetId}.cpuprofile`)
-  const flatPath = path.join(ASSETS_DIR, 'cpuprofile-legacyapp-legacy-a.cpuprofile')
+  test(`${scriptName} migrates a legacy nested asset into the flat layout`, async () => {
+    const assetId = 'legacy-asset-123456'
+    const legacyDir = path.join(ASSETS_DIR, 'legacyapp')
+    const legacyPath = path.join(legacyDir, `${assetId}.cpuprofile`)
+    const flatPath = path.join(ASSETS_DIR, 'cpuprofile-legacyapp-legacy-a.cpuprofile')
 
-  await withCleanAssets(async () => {
-    fs.mkdirSync(legacyDir, { recursive: true })
-    fs.writeFileSync(legacyPath, '{"legacy":true}')
+    await withCleanAssets(async () => {
+      fs.mkdirSync(legacyDir, { recursive: true })
+      fs.writeFileSync(legacyPath, '{"legacy":true}')
 
-    await withSettings(
-      { 'nsolid.apiBaseUrl': 'http://127.0.0.1:65535', 'nsolid.authToken': 'unused-token' },
-      async () => {
-        const result = await runAsync(SCRIPT, [assetId, 'cpuprofile', 'legacyapp'])
-        assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
-        assert.match(result.stdout, /Asset already existed and was moved to:/)
-
-        assert.ok(fs.existsSync(flatPath))
-        assert.ok(!fs.existsSync(legacyPath))
-        assert.ok(!fs.existsSync(legacyDir))
-
-        const entry = readAssetIndex().find(record => record.assetId === assetId)
-        assert.ok(entry)
-        assert.strictEqual(entry.localPath, 'cpuprofile-legacyapp-legacy-a.cpuprofile')
-      }
-    )
-  })
-})
-
-test(`${scriptName} - exits with error when console returns non-200 status`, async () => {
-  await withServer(
-    (req, res) => {
-      res.writeHead(401)
-      res.end('Unauthorized')
-    },
-    async (port) => {
       await withSettings(
-        { 'nsolid.apiBaseUrl': `http://127.0.0.1:${port}`, 'nsolid.authToken': 'bad-token' },
+        { 'nsolid.apiBaseUrl': 'http://127.0.0.1:65535', 'nsolid.authToken': 'unused-token' },
         async () => {
-          const result = await runAsync(SCRIPT, ['some-asset-id', 'heapsnapshot'])
-          assert.strictEqual(result.status, 1)
-          assert.match(result.stderr, /Console returned 401/)
+          const result = run(SCRIPT, [assetId, 'cpuprofile', 'legacyapp'])
+          assert.strictEqual(result.status, 0, `output: ${outputOf(result)}`)
+
+          assert.ok(fs.existsSync(flatPath))
+          assert.ok(!fs.existsSync(legacyPath))
+          assert.ok(!fs.existsSync(legacyDir))
+
+          const entry = readAssetIndex().find(record => record.assetId === assetId)
+          assert.ok(entry)
+          assert.strictEqual(entry.localPath, 'cpuprofile-legacyapp-legacy-a.cpuprofile')
         }
       )
-    }
-  )
-})
+    })
+  })
 
-test(`${scriptName} - prefers the caller workspace when installed under .agents/skills`, async () => {
-  const assetId = 'test-installed-asset'
-  const assetContent = '{"type":"cpuprofile","nodes":[1]}'
-  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fetch-asset-installed-'))
-  const installedDir = path.join(projectRoot, '.agents', 'skills')
-  const installedScript = path.join(installedDir, 'fetch-asset.cjs')
-  const settingsDir = path.join(projectRoot, '.vscode')
-  const settingsPath = path.join(settingsDir, 'settings.json')
-  const assetsDir = path.join(projectRoot, '.nsolid', 'assets')
-  const expectedPath = path.join(assetsDir, 'cpuprofile-installed_app-test-ins.cpuprofile')
-
-  try {
-    fs.mkdirSync(installedDir, { recursive: true })
-    fs.mkdirSync(settingsDir, { recursive: true })
-    fs.copyFileSync(SCRIPT, installedScript)
-    fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"consumer-workspace"}\n')
-    fs.writeFileSync(path.join(installedDir, 'package.json'), '{"name":"installed-skills"}\n')
-
-    await withServer(
-      (req, res) => {
-        if (req.url === `/api/v3/asset/${assetId}`) {
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(assetContent)
-          return
-        }
-
-        res.writeHead(404)
-        res.end()
-      },
-      async (port) => {
-        fs.writeFileSync(settingsPath, JSON.stringify({
-          'nsolid.apiBaseUrl': `http://127.0.0.1:${port}`,
-          'nsolid.authToken': 'test-token'
-        }))
-
-        const result = await runAsync(installedScript, [assetId, 'cpuprofile', 'installed/app'], {
-          cwd: projectRoot,
-          env: { ...process.env, INIT_CWD: projectRoot }
-        })
-        assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
-        assert.match(result.stdout, /Asset saved to:/)
-        assert.ok(fs.existsSync(expectedPath), `Expected file not found: ${expectedPath}`)
-
-        const indexPath = path.join(assetsDir, 'index.json')
-        const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8'))
-        const entry = index.find(record => record.assetId === assetId)
-        assert.ok(entry)
-        assert.strictEqual(entry.localPath, 'cpuprofile-installed_app-test-ins.cpuprofile')
-
-        const nestedAssetsDir = path.join(installedDir, '.nsolid', 'assets')
-        assert.ok(!fs.existsSync(nestedAssetsDir), `Installed skill dir should not get assets: ${nestedAssetsDir}`)
+  test(`${scriptName} exits with error when console returns non-200 status`, async () => {
+    const mock = createFetchMock({
+      'http://127.0.0.1:9914/api/v3/asset/some-asset-id': {
+        status: 401,
+        statusText: 'Unauthorized',
+        body: 'Unauthorized'
       }
-    )
-  } finally {
-    fs.rmSync(projectRoot, { recursive: true, force: true })
-  }
-})
+    })
 
-}for (const SCRIPT of FETCH_ASSET_SCRIPTS) {
-const scriptName = path.basename(path.dirname(SCRIPT)) + '/' + path.basename(SCRIPT)
+    try {
+      await withSettings(
+        { 'nsolid.apiBaseUrl': 'http://127.0.0.1:9914', 'nsolid.authToken': 'bad-token' },
+        async () => {
+          const result = run(SCRIPT, ['some-asset-id', 'heapsnapshot'], { env: mock.env })
+          assert.strictEqual(result.status, 1)
+          assert.deepStrictEqual(readAssetIndex().find(record => record.assetId === 'some-asset-id'), undefined)
+        }
+      )
+    } finally {
+      mock.cleanup()
+    }
+  })
 
+  test(`${scriptName} resolves the caller workspace when installed under .agents/skills`, () => {
+    const assetId = 'test-installed-asset'
+    const assetContent = '{"type":"cpuprofile","nodes":[1]}'
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fetch-asset-installed-'))
+    const installedDir = path.join(projectRoot, '.agents', 'skills')
+    const installedScript = path.join(installedDir, 'fetch-asset.cjs')
+    const settingsDir = path.join(projectRoot, '.vscode')
+    const settingsPath = path.join(settingsDir, 'settings.json')
+    const assetsDir = path.join(projectRoot, '.nsolid', 'assets')
+    const expectedPath = path.join(assetsDir, 'cpuprofile-installed_app-test-ins.cpuprofile')
+    const mock = createFetchMock({
+      [`http://127.0.0.1:9915/api/v3/asset/${assetId}`]: {
+        status: 200,
+        statusText: 'OK',
+        body: assetContent
+      }
+    })
 
-}for (const SCRIPT of FETCH_ASSET_SCRIPTS) {
-const scriptName = path.basename(path.dirname(SCRIPT)) + '/' + path.basename(SCRIPT)
+    try {
+      fs.mkdirSync(installedDir, { recursive: true })
+      fs.mkdirSync(settingsDir, { recursive: true })
+      fs.copyFileSync(SCRIPT, installedScript)
+      fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"consumer-workspace"}\n')
+      fs.writeFileSync(settingsPath, JSON.stringify({
+        'nsolid.apiBaseUrl': 'http://127.0.0.1:9915',
+        'nsolid.authToken': 'test-token'
+      }))
 
+      const result = run(installedScript, [assetId, 'cpuprofile', 'installed/app'], {
+        cwd: projectRoot,
+        env: { ...mock.env, INIT_CWD: projectRoot }
+      })
+      assert.strictEqual(result.status, 0, `output: ${outputOf(result)}`)
+      assert.ok(fs.existsSync(expectedPath), `Expected file not found: ${expectedPath}`)
 
+      const indexPath = path.join(assetsDir, 'index.json')
+      const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8'))
+      const entry = index.find(record => record.assetId === assetId)
+      assert.ok(entry)
+      assert.strictEqual(entry.localPath, 'cpuprofile-installed_app-test-ins.cpuprofile')
+
+      const nestedAssetsDir = path.join(installedDir, '.nsolid', 'assets')
+      assert.ok(!fs.existsSync(nestedAssetsDir), `Installed skill dir should not get assets: ${nestedAssetsDir}`)
+    } finally {
+      mock.cleanup()
+      fs.rmSync(projectRoot, { recursive: true, force: true })
+    }
+  })
 }

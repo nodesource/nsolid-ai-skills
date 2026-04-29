@@ -16,74 +16,138 @@ has. Do not capture a new profile unless the user explicitly asks for that.
 
 ### 1. Identify the Asset
 - The user should provide an asset ID, a local file path, or both.
+- If only a local file path is provided (no asset ID), proceed directly to
+  step 2 using the local file.
 - If the user only gives an app name or asset type, call `assets` with filters
   and ask the user which asset to inspect.
-- Record the asset ID, local file path, app name, and likely asset type.
+- Record the asset ID (or `unavailable`), local file path (or `unavailable`),
+  app name, and likely asset type.
 
 ### 2. Get the Best Available Summary
-- Prefer `asset-summary` first when you have an asset ID.
-- For CPU profiles and heap sampling assets, `asset-summary` should return
-  immediately.
-- For heap snapshots, `asset-summary` may return an async response first. When
-  that happens, call `assets-in-progress`, wait with `wait.cjs`, and retry until
-  the summary is ready.
-- If MCP is unavailable, `asset-summary` fails, or the user only supplied a
-  local file path, read the local file and use that content as analysis input.
-- If the local file is unreadable and MCP is unavailable, state that clearly and
-  stop instead of guessing.
+
+#### CPU profiles and heap sampling assets
+- Prefer `asset-summary` first when you have an asset ID. These asset types
+  return immediately.
+- If MCP is unavailable or `asset-summary` fails, read the local file and use
+  that content as analysis input.
+
+#### Heap snapshots (async summarization)
+Heap snapshot summarization is asynchronous and may not be ready on the first
+call. Use this retry loop:
+
+1. Call `asset-summary` with the asset ID.
+2. If the response body contains `"processing"`, `"summarization started"`,
+   or a reference to `"assets-in-progress"`, the snapshot is still being
+   summarized — do NOT analyze it yet.
+3. Call `assets-in-progress` to check the queue position.
+4. Call `wait.js` with `{ "seconds": 5 }` to wait before retrying.
+5. Call `asset-summary` again on the same asset ID.
+6. Repeat steps 3–5 up to **12 times** before giving up.
+7. If still not ready after 12 retries, report that clearly instead of
+   analyzing a stale or empty summary.
+
+**Never analyze a heap snapshot summary that is still marked as processing.**
+
+#### Local file only (no asset ID)
+- Read the local file directly and use it as the grounded input.
+- Accept `.cpuprofile`, `.heapprofile`, `.heapsampling`, `.heapsnapshot`,
+  and raw `.json` files.
+- If the file is unreadable and MCP is unavailable, state that clearly and stop.
 
 ### 3. Analyze by Asset Type
-- CPU profile:
-  - Find the functions with the highest `totalTime` and `selfTime`.
-  - Explain the hot path and the most expensive bottleneck.
-- Heap profile or heap sample:
-  - Identify top allocating constructors.
-  - Call out self size, retained size, and any suspicious allocation patterns.
-- Heap snapshot:
-  - Inspect the dominator tree, retainers, and the largest retained objects.
-  - Focus on why memory remains reachable.
+
+#### CPU Profile
+- Find the functions with the highest `totalTime` and `selfTime`.
+- Explain the hot path and the most expensive bottleneck.
+- Focus on user-owned code. If the top cost is in Node internals or
+  `node_modules`, explain the nearest relevant user-owned caller instead.
+
+#### Heap Profile or Heap Sample
+- Identify top allocating constructors by self size and retained size.
+- Call out suspicious allocation patterns (e.g. unusually large arrays,
+  many short-lived objects of the same type).
+
+#### Heap Snapshot
+Inspect the summary for these signals:
+
+**Top retained-size objects** — list the largest objects by retained size.
+Explain what type they are and why they are still reachable.
+
+**Dominator chains** — identify the shortest path from GC roots to the
+largest retained objects. Explain what is holding references.
+
+**Retainer paths** — for the top retained objects, trace back to the closest
+named user-owned code (module, function, or variable name).
+
+**Common leak patterns to flag:**
+- Closures holding references to large outer scopes that outlive their use.
+- `EventEmitter` listeners added but never removed (`removeListener` /
+  `off` missing).
+- Unbounded `Map`, `Set`, or plain object caches that grow without eviction.
+- Promise chains retaining intermediate values after resolution.
+- `setInterval` or `setTimeout` callbacks capturing large context.
+- Detached DOM-like structures in server-side rendering code.
+- Large `Buffer` or `TypedArray` allocations held by long-lived objects.
+- Interned string tables or template literal accumulation.
+
+**Confirm leak vs one-off spike:**
+- Call `metrics-historic` for `heapUsed`, `heapTotal`, and `rss` around
+  the snapshot time to see whether heap was trending upward before the
+  snapshot was taken.
+- Check `events-historic` for near-OOM alerts or process-blocked events
+  that coincide with the snapshot time.
+
+**Follow-up recommendation:**
+- If the snapshot provides insufficient allocation stack traces, recommend
+  `track-heap-objects` to capture allocation origins with low overhead.
+- For deeper leak hunting workflows, reference the
+  `advanced-memory-leak-hunter` skill.
 
 ### 4. Correlate with Runtime Context
 - If MCP is available, call `information-dashboard` to confirm the app, agent,
   hostname, and whether the originating process still exists.
-- When the user needs more context, call `metrics-historic` around the asset
-  time to correlate CPU, heap, or event-loop behavior.
+- Call `metrics-historic` around the asset time to correlate CPU, heap, or
+  event-loop behavior with the findings.
 
 ### 5. Extract Runtime Code for CPU Bottlenecks
 - Only do this for CPU profiles and only if MCP is available.
-- If the culprit function includes a valid `scriptId` and `url`, offer to call
-  `runtime-code`.
+- After identifying the hottest user-owned frame (function name, `scriptId`,
+  `url`), offer to call `runtime-code`.
 - Do not call `runtime-code` when `scriptId` is `0`.
-- If Dockerized paths do not match, try at most two path adjustments.
+- Retry up to 2 times with path adjustments if the first call fails
+  (strip leading `/app` or Docker prefix, or remove a path segment).
 
 ### 6. Keep the User in the Loop
 - Present the key findings first.
 - Ask whether the user wants an optimized solution before proposing code
-  changes.
+  changes (CPU profiles only).
 
 ### 7. Write a Report
-1. Present a markdown report to the user using this structure:
-   ```markdown
-   # Asset Analysis Report — <asset label>
-   **Date**: <ISO date>
-   **Asset ID**: <asset id or unavailable>
-   **Local File**: <path or unavailable>
+Emit the analysis directly in chat using this exact structure so the host
+extension can locate and persist it:
 
-   ## Summary
-   <short explanation of the main finding>
+```markdown
+# Asset Analysis — <asset label>
 
-   ## Asset Type
-   <cpu profile | heap profile | heap sample | heap snapshot>
+**Date**: <ISO date>
+**Asset ID**: <asset id or unavailable>
+**Local File**: <path or unavailable>
+**Source**: <MCP asset-summary | local file>
 
-   ## Findings
-   <top functions, constructors, retainers, or object groups>
+## Analysis
+<findings, observations, and next steps — start here directly without
+ repeating the title, asset ID, local file path, or source label>
+```
 
-   ## Context
-   <agent metadata or related metric observations>
-
-   ## Recommendation
-   <most pragmatic next step>
-   ```
+Rules:
+- Start the `## Analysis` section directly with findings — no preamble.
+- Do not repeat the title, asset ID, local file, or source label inside the body.
+- Do not wrap the final answer in triple backticks or any fenced code block.
+- Do not invent sample counts, timings, function names, object names, or
+  conclusions that are not present in the grounded input.
+- If the grounded input is insufficient for a claim, say that plainly.
+- The host extension persists the markdown automatically. Do not call any save
+  tool or shell script.
 
 ### 8. Validate When Optimization Is Proposed
 - If you end up optimizing CPU-bound code, use the `benchmark-validate` skill to
@@ -95,9 +159,13 @@ has. Do not capture a new profile unless the user explicitly asks for that.
 - `assets-in-progress`
 - `information-dashboard`
 - `metrics-historic`
+- `events-historic`
 - `runtime-code`
+- `track-heap-objects`
 
 ## Guardrails
 - Do not download raw assets when `asset-summary` already gives enough signal.
-- Do not pretend heap snapshots are ready when summarization is still pending.
-- Do not assume the local file is CPU-only; support heap assets too.
+- Never analyze a heap snapshot that is still marked as processing or pending.
+  Poll and wait until `asset-summary` returns the actual summarized content.
+- Do not assume the local file is CPU-only; all heap asset types are supported.
+- Do not invent findings. If the asset summary lacks detail, say so explicitly.

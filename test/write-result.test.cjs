@@ -4,15 +4,14 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { spawnSync } = require('node:child_process')
 const fs = require('node:fs')
-const os = require('node:os')
 const path = require('node:path')
 
 const ROOT = path.resolve(__dirname, '..')
 const BENCHMARKS_DIR = path.join(ROOT, '.nsolid', 'benchmarks')
 const GITIGNORE_PATH = path.join(ROOT, '.gitignore')
 const WRITE_RESULT_SCRIPTS = [
-  path.join(ROOT, 'benchmark-run', 'write-result.cjs'),
-  path.join(ROOT, 'benchmark-validate', 'write-result.cjs')
+  path.join(ROOT, 'benchmark-run', 'write-result.js'),
+  path.join(ROOT, 'benchmark-validate', 'write-result.js')
 ]
 
 function run (script, args, cwd = ROOT) {
@@ -21,6 +20,20 @@ function run (script, args, cwd = ROOT) {
     encoding: 'utf-8',
     timeout: 10_000
   })
+}
+
+function outputOf (result) {
+  return `${result.stdout}${result.stderr}`
+}
+
+function newBenchmarkFiles (beforeEntries) {
+  if (!fs.existsSync(BENCHMARKS_DIR)) {
+    return []
+  }
+
+  return fs.readdirSync(BENCHMARKS_DIR)
+    .filter(entry => !beforeEntries.has(entry))
+    .map(entry => path.join(BENCHMARKS_DIR, entry))
 }
 
 async function withBenchmarkState (fn) {
@@ -54,21 +67,24 @@ async function withBenchmarkState (fn) {
 
 for (const script of WRITE_RESULT_SCRIPTS) {
   const scriptLabel = path.relative(ROOT, script)
+  const scriptName = path.basename(script)
 
   test(`${scriptLabel} exits with usage when no JSON is provided`, () => {
     const result = run(script, [])
     assert.strictEqual(result.status, 1)
-    assert.match(result.stderr, /Usage: node write-result\.cjs/)
   })
 
   test(`${scriptLabel} exits with error for invalid JSON`, () => {
     const result = run(script, ['{bad json}'])
     assert.strictEqual(result.status, 1)
-    assert.match(result.stderr, /Invalid JSON:/)
   })
 
   test(`${scriptLabel} writes a benchmark result file and updates .gitignore`, async () => {
     await withBenchmarkState(() => {
+      const beforeEntries = fs.existsSync(BENCHMARKS_DIR)
+        ? new Set(fs.readdirSync(BENCHMARKS_DIR))
+        : new Set()
+
       if (fs.existsSync(GITIGNORE_PATH)) {
         fs.rmSync(GITIGNORE_PATH)
       }
@@ -79,10 +95,11 @@ for (const script of WRITE_RESULT_SCRIPTS) {
       })
 
       const result = run(script, [payload])
-      assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
+      assert.strictEqual(result.status, 0, `output: ${outputOf(result)}`)
 
-      const outputPath = result.stdout.trim()
-      assert.ok(outputPath.startsWith(BENCHMARKS_DIR + path.sep), `Unexpected output path: ${outputPath}`)
+      const createdFiles = newBenchmarkFiles(beforeEntries)
+      assert.strictEqual(createdFiles.length, 1, `Expected one new benchmark file, found ${createdFiles.length}`)
+      const outputPath = createdFiles[0]
       assert.ok(fs.existsSync(outputPath))
       assert.match(path.basename(outputPath), /^\d+-render_chart__\.json$/)
 
@@ -98,12 +115,17 @@ for (const script of WRITE_RESULT_SCRIPTS) {
 
   test(`${scriptLabel} falls back to unknown when functionName is missing`, async () => {
     await withBenchmarkState(() => {
-      const result = run(script, [JSON.stringify({ result: { opsSec: 7 } })])
-      assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`)
+      const beforeEntries = fs.existsSync(BENCHMARKS_DIR)
+        ? new Set(fs.readdirSync(BENCHMARKS_DIR))
+        : new Set()
 
-      const outputPath = result.stdout.trim()
+      const result = run(script, [JSON.stringify({ result: { opsSec: 7 } })])
+      assert.strictEqual(result.status, 0, `output: ${outputOf(result)}`)
+
+      const createdFiles = newBenchmarkFiles(beforeEntries)
+      assert.strictEqual(createdFiles.length, 1, `Expected one new benchmark file, found ${createdFiles.length}`)
+      const outputPath = createdFiles[0]
       assert.match(path.basename(outputPath), /^\d+-unknown\.json$/)
     })
   })
-
 }

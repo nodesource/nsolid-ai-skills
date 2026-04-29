@@ -151,12 +151,12 @@ Note the returned `jobId` as `originalJobId`.
 Run the wait script (use the absolute path of the directory where you read this SKILL.md):
 
 ```
-node "<skill-dir>/wait.cjs" 20
+node "<skill-dir>/wait.js" 20
 ```
 
 ### 4. Get Original Result
 
-Call `get_benchmark_result` with `originalJobId`. If not yet `"completed"`, run `wait.cjs 5` and poll again.
+Call `get_benchmark_result` with `originalJobId`. If not yet `"completed"`, run `wait.js 5` and poll again.
 
 Save: `opsSec`, `opsSecPerRun`, `iterations`, `histogram`, `benchmarkConfig`.
 
@@ -174,12 +174,12 @@ For each optimized attempt:
 ### 6. Wait
 
 ```
-node "<skill-dir>/wait.cjs" 20
+node "<skill-dir>/wait.js" 20
 ```
 
 ### 7. Get Optimized Result
 
-Call `get_benchmark_result` with `optimizedJobId`. If not yet `"completed"`, run `wait.cjs 5` and poll again.
+Call `get_benchmark_result` with `optimizedJobId`. If not yet `"completed"`, run `wait.js 5` and poll again.
 
 Save: `opsSec`, `opsSecPerRun`, `iterations`, `histogram`.
 
@@ -243,7 +243,7 @@ Build this JSON (fill in real values):
 Run the write script (use the same `<skill-dir>` path):
 
 ```
-node "<skill-dir>/write-result.cjs" '<json-string>'
+node "<skill-dir>/write-result.js" '<json-string>'
 ```
 
 The script prints the output path. Report it to the user alongside the final
@@ -269,7 +269,7 @@ marker entirely — the host extension will not offer the apply action.
 ## Guardrails
 
 - You MUST use the exact same `args` and `argSetupCode` for both runs — otherwise the comparison is statistically invalid.
-- NEVER skip the wait steps — always use `wait.cjs`, do not rely on estimating time.
+- NEVER skip the wait steps — always use `wait.js`, do not rely on estimating time.
 - A fix is not a fix until `compare_benchmarks` returns `"optimization_effective"`.
 - NEVER poll immediately after submitting a benchmark — always wait first.
 - If an optimized attempt does not pass the threshold, do not stop after one

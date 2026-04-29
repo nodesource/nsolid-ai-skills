@@ -30,9 +30,9 @@ you think in terms of deltas, allocations over time, and retained heap curves.
 2. Take an initial low-overhead heap sample using `heap-sampling` (duration: `30` seconds).
 3. Run the wait script using the absolute path of the directory where you read this SKILL.md:
    ```
-   node "<skill-dir>/wait.cjs" 30
+   node "<skill-dir>/wait.js" 30
    ```
-4. Call `assets-in-progress` to ensure generation is done. If still in progress, run `wait.cjs 10` and check again.
+4. Call `assets-in-progress` to ensure generation is done. If still in progress, run `wait.js 10` and check again.
 5. Pull the baseline summary using `asset-summary`. Note the top allocating constructors (e.g., `Object`, `Array`, `system / Map`).
 6. Check `.nsolid/assets/index.json` and `.nsolid/assets/` for the same baseline asset ID. If it is already present locally, reuse it and skip the download.
 7. If the baseline asset is not present, save it locally:
@@ -50,9 +50,9 @@ you think in terms of deltas, allocations over time, and retained heap curves.
 2. Use `track-heap-objects` if you suspect closures/retainers, otherwise standard `heap-sampling` for 60 seconds. Only use a full `snapshot` if absolutely necessary and the app is <256MB.
 3. Wait for the operation to complete:
    ```
-   node "<skill-dir>/wait.cjs" 60
+   node "<skill-dir>/wait.js" 60
    ```
-   Then call `assets-in-progress`. If still generating, run `wait.cjs 10` and check again.
+   Then call `assets-in-progress`. If still generating, run `wait.js 10` and check again.
 4. Pull the `asset-summary`.
 5. Check `.nsolid/assets/index.json` and `.nsolid/assets/` for the same peak asset ID. If it is already present locally, reuse it and skip the download.
 6. If the peak asset is not present, save it locally:
@@ -74,7 +74,7 @@ you think in terms of deltas, allocations over time, and retained heap curves.
 4. Only after user approval, propose an optimized rewrite and use the `benchmark-validate` skill to verify the fix.
 
 ### Phase 6: Write a Report
-1. Present the full report to the user using this structure:
+1. Write the full report as markdown to a temporary file (e.g. `/tmp/nsolid-report-leak.md`) using this structure:
    ```markdown
    # Memory Leak Hunt Report — <appName>
    **Date**: <ISO date>
@@ -110,6 +110,11 @@ you think in terms of deltas, allocations over time, and retained heap curves.
    - Baseline heap profile: `.nsolid/assets/heapprofile-<appName>-<baselineAssetIdPrefix>.heapprofile`
    - Peak heap profile: `.nsolid/assets/heapprofile-<appName>-<peakAssetIdPrefix>.heapprofile`
    ```
+2. Run the save-report script to persist the report and register it in the metadata index:
+   ```
+   node "<skill-dir>/../save-report.cjs" memory-leak-hunt "Memory Leak Hunt Report — <appName>" /tmp/nsolid-report-leak.md
+   ```
+3. The script prints the saved path. Tell the user: *"Report saved to `.nsolid/assets/`. Both baseline and peak heap profiles are available in `.nsolid/assets/`."*
 
 ## Guardrails
 - **No early assumptions**: Never declare a memory leak from a single snapshot. Always compare baseline to peak.

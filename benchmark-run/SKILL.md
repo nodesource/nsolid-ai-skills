@@ -163,12 +163,12 @@ Note the returned `jobId`.
 Run the wait script (use the absolute path of the directory where you read this SKILL.md):
 
 ```
-node "<skill-dir>/wait.cjs" 20
+node "<skill-dir>/wait.js" 20
 ```
 
 ### 5. Get the Result
 
-Call `get_benchmark_result` with the `jobId`. If `status` is not yet `"completed"`, run `wait.cjs 5` and poll again. Repeat until complete.
+Call `get_benchmark_result` with the `jobId`. If `status` is not yet `"completed"`, run `wait.js 5` and poll again. Repeat until complete.
 
 Extract: `result.opsSec`, `result.opsSecPerRun`, `result.iterations`, `result.histogram`, `result.benchmarkConfig`.
 
@@ -200,7 +200,7 @@ Build this JSON (fill in real values):
 Run the write script (use the same `<skill-dir>` path):
 
 ```
-node "<skill-dir>/write-result.cjs" '<json-string>'
+node "<skill-dir>/write-result.js" '<json-string>'
 ```
 
 The script prints the output path. Report it to the user.
@@ -215,7 +215,7 @@ Tell the user:
 ## Guardrails
 
 - NEVER call `global-filter` for process discovery — it returns ~18,000 tokens.
-- NEVER skip the wait step — always use `wait.cjs`, do not rely on estimating time.
+- NEVER skip the wait step — always use `wait.js`, do not rely on estimating time.
 - Both `args` arrays must match exactly between original and any future optimized version for fair comparison.
 - If V8 extraction fails after 2 path attempts, fall back to asking the user for the code — do not loop.
 - Pass `isOptimized: false` — this is a baseline run, not a comparison.

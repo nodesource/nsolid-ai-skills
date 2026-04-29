@@ -77,7 +77,7 @@ says read-only, offline, or no-capture.
 - After starting the standard 30-second CPU profile, call the `nsolid_wait`
   tool with `{ "seconds": 35 }` so the capture has time to finish and upload.
 - If you used a different profile duration, wait that duration plus 5 seconds.
-- Do NOT use shell commands, `node wait.cjs`, or `setTimeout`. The only way to
+- Do NOT use shell commands, `node wait.js`, or `setTimeout`. The only way to
   wait inside this skill is the `nsolid_wait` tool.
 
 ### 7. Check Readiness Using the Exact Asset ID
@@ -149,33 +149,28 @@ says read-only, offline, or no-capture.
     tweaks above before giving up.
 
 ### 12. Compare Runtime Code to Workspace Source
-- **Precondition — verify the workspace matches the app first.** Read
-  `package.json` at the workspace root. If `name` in `package.json` does NOT
-  match the profiled app name (exact string match, case-insensitive), SKIP
-  this entire step and write "Workspace does not match profiled app
-  (`<workspace-name>` vs `<app-name>`) — comparison skipped." in the report.
-  Do NOT guess, do NOT claim files match when the workspace is a different
-  project. A false match is worse than no match.
-- Only if the `package.json` name matches, proceed:
-  - Only attempt this step for user-owned application code. If the hot frame is
-    a dependency or Node internal path, skip comparison and say that the
-    performance issue originates outside user-owned source.
-  - Check if the culprit file `url` (or its Docker-adjusted equivalent) maps
-    to a file in the current workspace. Strip common Docker prefixes (`/app`,
-    `/usr/src/app`, `/home/node/app`) from `url`, then verify the resulting
-    path exists under the workspace root (use a file-existence check, not a
-    guess based on pathname).
-  - If the file exists, read the local copy and diff against the runtime
-    version. Note real differences: added logic, removed guards, changed
-    thresholds, dependency bumps, etc.
-  - Identify whether the hot function is still present, renamed, or refactored.
-  - Include a "local vs. runtime delta" section in the final report with the
-    actual diff content, not a paraphrase.
-  - If the file does not exist locally even though the package name matched,
-    say so explicitly (e.g., "file exists in runtime but not in workspace —
-    likely built/transpiled output").
-- Do not block the report on a missing workspace match. A missing match is
-  useful information, not a blocker.
+- Prefer the `workspace_delta` tool when it is available. Pass the profiled app
+  name, runtime path, runtime code, and the best line range or line hint you
+  have for the hot function.
+- If `workspace_delta` reports that the workspace does not match the profiled
+  app, skip comparison and state that clearly in the report.
+- If `workspace_delta` is unavailable but shell execution is allowed, use the
+  bundled `.agents/skills/analyze-cpu/workspace-delta.cjs` helper. It accepts
+  JSON via stdin or a file path and prints the comparison result as JSON.
+- If neither the tool nor the bundled helper is available, perform a
+  conservative manual fallback: verify that the current workspace corresponds
+  to the target app before comparing any local code, and skip comparison if
+  identity is uncertain.
+- Only attempt this step for user-owned application code. If the hot frame is a
+  dependency or Node internal path, skip comparison and say that the
+  performance issue originates outside user-owned source.
+- If the file maps cleanly to the workspace, compare the local copy to the
+  runtime version. Note real differences such as added logic, removed guards,
+  changed thresholds, or refactors.
+- Include a "Workspace Delta" section in the final report with the actual diff
+  content when a comparison was possible.
+- If the file does not map to a local workspace file, or app identity could not
+  be proven safely, say so explicitly instead of guessing.
 
 ### 13. Present the Full Report
 - Structure the final report with these sections:
@@ -229,9 +224,12 @@ says read-only, offline, or no-capture.
   requested read-only/offline behavior.
 - NEVER call discovery tools only to restate the same app and spike value the
   user already provided; continue to the target-agent selection and profile.
-- NEVER shell out (`node wait.cjs`, `node fetch-asset.cjs`, `setTimeout`,
-  `sleep`, curl, etc.). Use `nsolid_wait` and `nsolid_downloadAsset` only —
-  these are the supported tools inside this environment.
+- NEVER shell out for waiting, asset download, or ad hoc data collection
+  (`node wait.js`, `node fetch-asset.cjs`, `setTimeout`, `sleep`, curl, etc.).
+  Use `nsolid_wait` and `nsolid_downloadAsset` when those tools exist. The only
+  shell fallback allowed by this skill is the bundled
+  `.agents/skills/analyze-cpu/workspace-delta.cjs` helper, and only when the
+  `workspace_delta` tool is unavailable.
 - NEVER paste the entire `runtime-code` response when only part of it is
   relevant. Keep the report focused on the code that explains the problem and
   proposed fix.

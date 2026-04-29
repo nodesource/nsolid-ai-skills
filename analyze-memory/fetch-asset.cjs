@@ -174,22 +174,7 @@ function findWorkspaceRoot (startDir) {
     }
     dir = path.dirname(dir)
   }
-  return null
-}
-
-function resolveWorkspaceRoot () {
-  const candidates = [process.env.INIT_CWD, process.cwd(), path.resolve(__dirname)]
-
-  for (const candidate of candidates) {
-    if (!candidate) continue
-
-    const workspaceRoot = findWorkspaceRoot(path.resolve(candidate))
-    if (workspaceRoot) {
-      return workspaceRoot
-    }
-  }
-
-  return path.resolve(process.cwd())
+  return startDir
 }
 
 function stripJsonComments (input) {
@@ -316,7 +301,7 @@ async function main () {
     process.exit(1)
   }
 
-  const workspaceRoot = resolveWorkspaceRoot()
+  const workspaceRoot = findWorkspaceRoot(path.resolve(__dirname))
   const { consoleUrl, token } = readSettings(workspaceRoot)
 
   const assetsDir = getAssetsDir(workspaceRoot)

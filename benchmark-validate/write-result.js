@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// write-result.cjs — writes benchmark JSON to .nsolid/benchmarks/ in the workspace root.
-// Usage: node write-result.cjs '<json-string>'
+// write-result.js — writes benchmark JSON to .nsolid/benchmarks/ in the workspace root.
+// Usage: node write-result.js '<json-string>'
 // No external dependencies — plain Node.js only.
 
 'use strict';
@@ -10,7 +10,7 @@ const path = require('path');
 
 const json = process.argv[2];
 if (!json) {
-  console.error('Usage: node write-result.cjs \'<json-string>\'');
+  console.error('Usage: node write-result.js \'<json-string>\'');
   process.exit(1);
 }
 

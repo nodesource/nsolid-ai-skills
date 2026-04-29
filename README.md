@@ -9,12 +9,18 @@ Install any skill into your project using the [Vercel Skills CLI](https://vercel
 ```bash
 npx skills@latest add NodeSource/nsolid-ai-skills/analyze-vulnerabilities
 npx skills@latest add NodeSource/nsolid-ai-skills/generate-sbom
+npx skills@latest add NodeSource/nsolid-ai-skills/audit-dependencies
+npx skills@latest add NodeSource/nsolid-ai-skills/analyze-event
+npx skills@latest add NodeSource/nsolid-ai-skills/analyze-asset
 npx skills@latest add NodeSource/nsolid-ai-skills/analyze-cpu
 npx skills@latest add NodeSource/nsolid-ai-skills/analyze-memory
 npx skills@latest add NodeSource/nsolid-ai-skills/advanced-memory-leak-hunter
 npx skills@latest add NodeSource/nsolid-ai-skills/benchmark-run
 npx skills@latest add NodeSource/nsolid-ai-skills/benchmark-validate
 npx skills@latest add NodeSource/nsolid-ai-skills/analyze-tracing
+npx skills@latest add NodeSource/nsolid-ai-skills/node-upgrade
+npx skills@latest add NodeSource/nsolid-ai-skills/upgrade-package
+npx skills@latest add NodeSource/nsolid-ai-skills/replace-package
 ```
 
 Or manually copy the `<skill-name>/SKILL.md` file into your project's `.claude/skills/` directory.
@@ -27,6 +33,14 @@ Or manually copy the `<skill-name>/SKILL.md` file into your project's `.claude/s
 |-------|-------------|
 | **analyze-vulnerabilities** | Scans running production memory for actively-exploitable CVEs using live N|Solid data |
 | **generate-sbom** | Generates SPDX/JSON Software Bill of Materials from live running processes |
+| **audit-dependencies** | Audits direct and transitive npm dependencies and produces an NCM-grounded remediation plan |
+
+### Diagnostics
+
+| Skill | Description |
+|-------|-------------|
+| **analyze-event** | Investigates an existing N|Solid event with event-type-aware MCP tool usage and correlated evidence |
+| **analyze-asset** | Analyzes an existing asset from an asset ID or local file path without capturing a new profile |
 
 ### Performance
 
@@ -43,6 +57,19 @@ Or manually copy the `<skill-name>/SKILL.md` file into your project's `.claude/s
 | Skill | Description |
 |-------|-------------|
 | **analyze-tracing** | Maps distributed OpenTelemetry spans to diagnose microservice latency and topology issues |
+
+### Dependency Management
+
+| Skill | Description |
+|-------|-------------|
+| **upgrade-package** | Advises on upgrading a specific npm package with risk assessment and rollback guidance |
+| **replace-package** | Compares realistic npm package alternatives and provides migration guidance grounded in NCM data |
+
+### Runtime
+
+| Skill | Description |
+|-------|-------------|
+| **node-upgrade** | Recommends the right Node.js upgrade target using authoritative release schedule data and project version detection |
 
 ## Scripts
 
