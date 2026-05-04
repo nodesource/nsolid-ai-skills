@@ -17,7 +17,21 @@ proves it.
 
 ## Instructions
 
-### 1. Build `functionData` for Original and Optimized
+### 1. Acquire Both Implementations and Inspect Their Project Context
+
+Before you build benchmark inputs, gather the real calling context for the original implementation:
+
+- If the user points to workspace files, read the original and optimized implementations from those files.
+- Search the codebase for real invocation sites of the original function.
+- Search for unit/integration tests covering the original function or its immediate caller.
+- Inspect the argument shapes, fixtures, mocks, and helper builders used in those tests.
+- Use the original implementation's real calling pattern as the source of truth for benchmark inputs.
+
+If the optimized implementation has a different entry point or wrapper shape, account for that separately, but keep the benchmark contract aligned with the original usage unless the user explicitly says the contract changed.
+
+If you do not have access to the workspace or tests, say that clearly and derive the narrowest defensible benchmark inputs from the code itself.
+
+### 2. Build `functionData` for Original and Optimized
 
 Every benchmark call requires a `functionData` object. You will build **two** of them — one for the original, one for the optimized — using the **exact same** `args` and `argSetupCode` in both.
 
@@ -43,19 +57,43 @@ Every benchmark call requires a `functionData` object. You will build **two** of
 
 Follow these steps:
 
-1. Examine the function and all code it references
-2. Identify every external variable or object that is referenced but NOT defined inside the function as a local variable or parameter
-3. For **simple primitives** (numbers, strings, booleans), add their values directly to `args`
-4. For **complex external dependencies** (objects with methods, arrays that get mutated, db handles, etc.):
+1. Examine the original function and all code it references
+2. Search the codebase for actual invocation sites and tests before inventing arguments
+3. If tests exist for the original function or its immediate caller, reuse their argument shapes, fixtures, mocks, and setup patterns when appropriate
+4. Identify every external variable or object that is referenced but NOT defined inside the function as a local variable or parameter
+5. For **simple primitives** (numbers, strings, booleans), add their values directly to `args`
+6. For **complex external dependencies** (objects with methods, arrays that get mutated, db handles, etc.):
    - Add the dependency as an **explicit parameter** to BOTH original and optimized function signatures
    - Define it as a mock in `argSetupCode`
    - Add the **parameter name** (not the value) to `args`
-5. `args` MUST be identical between the original and optimized runs — otherwise the comparison is invalid
+7. `args` MUST be identical between the original and optimized runs — otherwise the comparison is invalid
+8. `argSetupCode` MUST be identical between the original and optimized runs — otherwise the comparison is invalid
+9. When test/codebase evidence conflicts with a generic mock, follow the codebase evidence
 
 #### `argSetupCode` — mock definitions for complex dependencies
 - Only include when you need to pass complex objects
 - Plain JS string that defines mock variables
 - Must be identical between the original and optimized runs
+
+### 3. Stop and Ask the User to Confirm the Shared Benchmark Inputs
+
+Before calling any benchmark tools, present both `functionData` objects to the user for review.
+
+Your confirmation message must include:
+- the original and optimized functions being compared
+- the proposed shared `args`
+- the proposed shared `argSetupCode` if present
+- each entry point
+- a short explanation of how the shared benchmark inputs were derived from real invocation sites and/or tests
+
+If relevant tests were found, mention which test file(s), fixtures, or helper builders influenced the proposed input shape.
+
+Then ask the user to confirm one of these actions:
+- approve the proposed arguments
+- ask you to regenerate them
+- provide manual edits
+
+Do NOT call `run_benchmark`, `get_benchmark_result`, `compare_benchmarks`, or any result-saving step until the user explicitly confirms the arguments.
 
 ---
 
@@ -138,7 +176,7 @@ argSetupCode:
 
 ---
 
-### 2. Run Original Benchmark
+### 4. Run Original Benchmark
 
 Call `run_benchmark` with:
 - `functionData`: `{ type, code, explanation, entryPoint, args, argSetupCode? }` for the **original**
@@ -146,7 +184,7 @@ Call `run_benchmark` with:
 
 Note the returned `jobId` as `originalJobId`.
 
-### 3. Wait
+### 5. Wait
 
 Run the wait script (use the absolute path of the directory where you read this SKILL.md):
 
@@ -154,13 +192,13 @@ Run the wait script (use the absolute path of the directory where you read this 
 node "<skill-dir>/wait.js" 20
 ```
 
-### 4. Get Original Result
+### 6. Get Original Result
 
 Call `get_benchmark_result` with `originalJobId`. If not yet `"completed"`, run `wait.js 5` and poll again.
 
 Save: `opsSec`, `opsSecPerRun`, `iterations`, `histogram`, `benchmarkConfig`.
 
-### 5. Run Optimized Benchmark Attempts
+### 7. Run Optimized Benchmark Attempts
 
 You must try the optimized implementation up to **3 total attempts** if the
 benchmark does not clear the effectiveness threshold on the first try.
@@ -171,19 +209,19 @@ For each optimized attempt:
 - Call `run_benchmark` with `isOptimized: true`
 - Note the returned `jobId` as `optimizedJobId`
 
-### 6. Wait
+### 8. Wait
 
 ```
 node "<skill-dir>/wait.js" 20
 ```
 
-### 7. Get Optimized Result
+### 9. Get Optimized Result
 
 Call `get_benchmark_result` with `optimizedJobId`. If not yet `"completed"`, run `wait.js 5` and poll again.
 
 Save: `opsSec`, `opsSecPerRun`, `iterations`, `histogram`.
 
-### 8. Compare Results
+### 10. Compare Results
 
 Call `compare_benchmarks` passing both `originalJobId` and `optimizedJobId`.
 
@@ -205,7 +243,7 @@ If none of the 3 optimized attempts reaches the threshold:
 - still present the **best** optimized attempt you measured
 - make it explicit that the final result did not meet the effectiveness threshold
 
-### 9. Save to `.nsolid/benchmarks/`
+### 11. Save to `.nsolid/benchmarks/`
 
 Build this JSON (fill in real values):
 
@@ -250,7 +288,17 @@ The script prints the output path. Report it to the user alongside the final
 benchmark verdict. If you made multiple optimized attempts, save and report the
 best final comparison you are standing behind.
 
-### 10. Emit Structured Apply Metadata
+Your report must include the **full raw benchmark result JSONs** returned by
+`get_benchmark_result` for both the original and optimized runs, as well as the
+`compare_benchmarks` response, so the user can see the complete data
+(ops/sec, iterations, histograms, p-value, improvement percent, etc.).
+
+As a recommended next step, advise the user to validate the optimization under
+representative load and capture fresh CPU profiles afterward. That follow-up
+helps confirm whether the function-level benchmark improvement produces a
+meaningful impact on end-to-end application performance.
+
+### 12. Emit Structured Apply Metadata
 
 After reporting the verdict, end the response with a single HTML comment
 containing the data the host extension needs to offer an "Apply optimization"
@@ -259,7 +307,7 @@ JSON string if you properly escape them), the final verdict flags, and any
 hot-function reference the extension provided in the prior CPU analysis.
 
 ```
-<!-- nsentinel-optimized: {"code":"<optimized source>","entryPoint":"<entryPoint>","improvementPct":<number>,"pValue":<number>,"isSignificant":<bool>,"verdictEffective":<bool>} -->
+<!-- nsolid-ide-optimized: {"code":"<optimized source>","entryPoint":"<entryPoint>","improvementPct":<number>,"pValue":<number>,"isSignificant":<bool>,"verdictEffective":<bool>} -->
 ```
 
 Only emit the marker when a valid A/B comparison completed. If the benchmark
@@ -268,7 +316,11 @@ marker entirely — the host extension will not offer the apply action.
 
 ## Guardrails
 
+- When the workspace is available, NEVER skip searching for real call sites and tests before proposing arguments.
+- If tests exist for the original function or its immediate caller, inspect them before proposing benchmark inputs.
+- NEVER run benchmark tools before the user confirms the proposed shared arguments.
 - You MUST use the exact same `args` and `argSetupCode` for both runs — otherwise the comparison is statistically invalid.
+- NEVER use different `args` or different `argSetupCode` between the original and optimized runs.
 - NEVER skip the wait steps — always use `wait.js`, do not rely on estimating time.
 - A fix is not a fix until `compare_benchmarks` returns `"optimization_effective"`.
 - NEVER poll immediately after submitting a benchmark — always wait first.

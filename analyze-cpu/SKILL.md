@@ -186,11 +186,11 @@ says read-only, offline, or no-capture.
      Wrap the code block with these exact HTML comment markers so the host
      extension can locate it:
      ```
-     <!-- nsentinel-runtime-code-start -->
+     <!-- nsolid-ide-runtime-code-start -->
      ```language
      <relevant source here>
      ```
-     <!-- nsentinel-runtime-code-end -->
+     <!-- nsolid-ide-runtime-code-end -->
      ```
   5. **Workspace Delta** (if applicable from step 12) — local vs. runtime diff and analysis.
   6. **Root Cause** — the specific reason this code is expensive (algorithmic, I/O, serialization, etc.).
@@ -203,7 +203,7 @@ says read-only, offline, or no-capture.
   extension can drive the followup flow. Use workspace-relative forward-slash
   paths and 1-indexed inclusive line numbers:
   ```
-  <!-- nsentinel-hotfn: {"file":"src/foo.ts","startLine":42,"endLine":80,"name":"parseToken"} -->
+  <!-- nsolid-ide-hotfn: {"file":"src/foo.ts","startLine":42,"endLine":80,"name":"parseToken"} -->
   ```
   If the hot function could not be mapped to a workspace file (Workspace Delta
   reported "file exists in runtime but not in workspace"), omit the marker
