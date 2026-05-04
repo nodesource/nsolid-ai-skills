@@ -19,17 +19,21 @@ proves it.
 
 ### 1. Acquire Both Implementations and Inspect Their Project Context
 
-Before you build benchmark inputs, gather the real calling context for the original implementation:
+This skill is usually called after `analyze-cpu`, which sets a workspace context flag indicating whether the code is available locally.
 
-- If the user points to workspace files, read the original and optimized implementations from those files.
+**If the workspace context flag says the code is available:**
+- Read the original and optimized implementations from the workspace files.
 - Search the codebase for real invocation sites of the original function.
 - Search for unit/integration tests covering the original function or its immediate caller.
 - Inspect the argument shapes, fixtures, mocks, and helper builders used in those tests.
 - Use the original implementation's real calling pattern as the source of truth for benchmark inputs.
 
-If the optimized implementation has a different entry point or wrapper shape, account for that separately, but keep the benchmark contract aligned with the original usage unless the user explicitly says the contract changed.
+**If the workspace context flag says the code is NOT available:**
+- Use the code provided by the user or from the prior `analyze-cpu` flow.
+- Say clearly that no workspace or tests are available.
+- Derive the narrowest defensible benchmark inputs from the code itself.
 
-If you do not have access to the workspace or tests, say that clearly and derive the narrowest defensible benchmark inputs from the code itself.
+If the optimized implementation has a different entry point or wrapper shape, account for that separately, but keep the benchmark contract aligned with the original usage unless the user explicitly says the contract changed.
 
 ### 2. Build `functionData` for Original and Optimized
 
@@ -196,7 +200,16 @@ node "<skill-dir>/wait.js" 20
 
 Call `get_benchmark_result` with `originalJobId`. If not yet `"completed"`, run `wait.js 5` and poll again.
 
-Save: `opsSec`, `opsSecPerRun`, `iterations`, `histogram`, `benchmarkConfig`.
+Extract the full `result` object from the response. It contains:
+- `result.name` — the benchmark name
+- `result.plugins` — any plugins that ran (e.g., V8NeverOptimizePlugin)
+- `result.opsSec` — average operations per second
+- `result.opsSecPerRun` — per-run ops/sec values
+- `result.iterations` — total iterations executed
+- `result.histogram` — timing distribution with `samples`, `min`, `max`, and `sampleData`
+- `result.benchmarkConfig` — the configuration used (repeatSuite, minSamples, minTime, maxTime)
+
+Keep the full `result` JSON available to present to the user.
 
 ### 7. Run Optimized Benchmark Attempts
 
@@ -219,7 +232,9 @@ node "<skill-dir>/wait.js" 20
 
 Call `get_benchmark_result` with `optimizedJobId`. If not yet `"completed"`, run `wait.js 5` and poll again.
 
-Save: `opsSec`, `opsSecPerRun`, `iterations`, `histogram`.
+Extract the full `result` object from the response, with the same fields as the original run (name, plugins, opsSec, opsSecPerRun, iterations, histogram, benchmarkConfig).
+
+Keep the full `result` JSON available to present to the user.
 
 ### 10. Compare Results
 
@@ -288,10 +303,44 @@ The script prints the output path. Report it to the user alongside the final
 benchmark verdict. If you made multiple optimized attempts, save and report the
 best final comparison you are standing behind.
 
-Your report must include the **full raw benchmark result JSONs** returned by
-`get_benchmark_result` for both the original and optimized runs, as well as the
-`compare_benchmarks` response, so the user can see the complete data
-(ops/sec, iterations, histograms, p-value, improvement percent, etc.).
+Present the comparison results in a markdown table showing original vs. optimized side by side. Include all relevant metrics so the user can see the full performance picture at a glance.
+
+The table must include:
+- **Function**: the entry point name
+- **ops/sec (original)**: the average operations per second for the original
+- **ops/sec (optimized)**: the average operations per second for the optimized
+- **Improvement %**: the percentage improvement from the comparison
+- **p-value**: the statistical significance value
+- **Verdict**: whether the optimization is effective
+- **Iterations (original)**: total iterations for the original
+- **Iterations (optimized)**: total iterations for the optimized
+- **Runs**: number of suite runs
+- **Histogram min/max (original)**: the fastest and slowest execution times
+- **Histogram min/max (optimized)**: the fastest and slowest execution times
+- **Histogram samples**: number of samples collected
+- **Config**: key benchmark settings (repeatSuite, minSamples, minTime, maxTime)
+- **Plugins**: any active plugins (e.g., V8NeverOptimizePlugin)
+- **Variance assessment**: whether either histogram shows high variance
+- **File path**: where the comparison result was saved
+
+Example table format:
+
+| Metric | Original | Optimized |
+|--------|----------|-----------|
+| Function | `generatePattern` | `generatePattern` |
+| ops/sec | 266.36 | 512.80 |
+| Improvement | — | +92.4% |
+| p-value | — | 0.0012 |
+| Verdict | — | optimization_effective |
+| Iterations | 2074 | 2156 |
+| Runs | 15 | 15 |
+| Histogram min | 1.65 ms | 0.85 ms |
+| Histogram max | 7.40 ms | 3.20 ms |
+| Histogram samples | 128 | 128 |
+| Config | repeatSuite=15, minSamples=10, minTime=0.05s, maxTime=0.5s | repeatSuite=15, minSamples=10, minTime=0.05s, maxTime=0.5s |
+| Plugins | V8NeverOptimizePlugin | V8NeverOptimizePlugin |
+| Variance | High (4.5x spread) | Low (3.8x spread) |
+| Saved to | `.nsolid/benchmarks/comparison-2024-01-15T10-30-00.json` | `.nsolid/benchmarks/comparison-2024-01-15T10-30-00.json` |
 
 As a recommended next step, advise the user to validate the optimization under
 representative load and capture fresh CPU profiles afterward. That follow-up

@@ -17,25 +17,15 @@ with scientific rigor using live benchmark execution — not estimates.
 
 ### 1. Acquire the Function Code and Project Context
 
-Choose one of the following based on context:
+This skill is triggered from a code-lens interaction inside the user's workspace, so the codebase is always available.
 
-**A. User-provided code** — The user pastes or points to a function in their workspace:
-- If the user pastes code directly, use that.
-- If they point to a file, read the file and extract the target function.
-- If the codebase is available, inspect the surrounding module and search the workspace for:
+- Read the file the user points to and extract the target function.
+- Inspect the surrounding module and search the workspace for:
   - real invocation sites
   - unit/integration tests that exercise the function
   - fixtures, mocks, or helper builders used by those tests
 - Treat the codebase evidence as the primary source of truth for argument shape. Prefer arguments derived from real usage over generic placeholder values.
-
-**B. Live V8 extraction** — The user wants to benchmark a function from a running process:
-- Call `information-dashboard` (no parameters) to find connected agents. Do NOT call `global-filter`.
-- Identify the target agent `id` and the function's `scriptId` + `url` from a prior CPU profile, or ask the user to provide them.
-- Call `runtime-code` with the agent `id`, `threadId`, `scriptId`, and `path` to extract the live source.
-- Edge cases:
-  - If `scriptId` is `0`, extraction fails — fall back to asking the user for the code.
-  - If the process is Dockerized, try up to 2 path tweaks before falling back.
-- If you only have runtime code and no workspace/tests, say that clearly and derive the narrowest defensible benchmark inputs from the code itself.
+- If you cannot find tests or call sites, say that clearly and derive the narrowest defensible benchmark inputs from the code itself.
 
 ### 2. Build `functionData`
 
@@ -199,7 +189,16 @@ node "<skill-dir>/wait.js" 20
 
 Call `get_benchmark_result` with the `jobId`. If `status` is not yet `"completed"`, run `wait.js 5` and poll again. Repeat until complete.
 
-Extract: `result.opsSec`, `result.opsSecPerRun`, `result.iterations`, `result.histogram`, `result.benchmarkConfig`.
+Extract the full `result` object from the response. It contains:
+- `result.name` — the benchmark name
+- `result.plugins` — any plugins that ran (e.g., V8NeverOptimizePlugin)
+- `result.opsSec` — average operations per second
+- `result.opsSecPerRun` — per-run ops/sec values
+- `result.iterations` — total iterations executed
+- `result.histogram` — timing distribution with `samples`, `min`, `max`, and `sampleData`
+- `result.benchmarkConfig` — the configuration used (repeatSuite, minSamples, minTime, maxTime)
+
+Keep the full `result` JSON available to present to the user.
 
 ### 7. Save to `.nsolid/benchmarks/`
 
@@ -236,19 +235,40 @@ The script prints the output path. Report it to the user.
 
 ### 8. Present Results
 
-Tell the user:
-- The function name and ops/sec achieved
-- The output file path where results were saved
-- Whether the histogram shows high variance (high min/max spread suggests inconsistent performance)
-- The **full raw benchmark result JSON** returned by `get_benchmark_result` so the user can see the complete data (ops/sec, iterations, histogram, benchmark config, etc.)
+Present the benchmark results in a markdown table. Include all relevant metrics from the `result` object so the user can see the full performance picture at a glance.
+
+The table must include:
+- **Function**: the entry point name
+- **ops/sec**: the average operations per second
+- **Iterations**: total iterations executed
+- **Runs**: number of suite runs
+- **Histogram min/max**: the fastest and slowest execution times in the distribution
+- **Histogram samples**: number of samples collected
+- **Config**: key benchmark settings (repeatSuite, minSamples, minTime, maxTime)
+- **Plugins**: any active plugins (e.g., V8NeverOptimizePlugin)
+- **Variance assessment**: whether the histogram shows high variance (high min/max spread suggests inconsistent performance)
+- **File path**: where the result was saved
+
+Example table format:
+
+| Metric | Value |
+|--------|-------|
+| Function | `generatePattern` |
+| ops/sec | 266.36 |
+| Iterations | 2074 |
+| Runs | 15 |
+| Histogram min | 1.65 ms |
+| Histogram max | 7.40 ms |
+| Histogram samples | 128 |
+| Config | repeatSuite=15, minSamples=10, minTime=0.05s, maxTime=0.5s |
+| Plugins | V8NeverOptimizePlugin |
+| Variance | High (min/max spread is 4.5x) |
+| Saved to | `.nsolid/benchmarks/generatePattern-2024-01-15T10-30-00.json` |
 
 ## Guardrails
 
-- NEVER call `global-filter` for process discovery — it returns ~18,000 tokens.
-- When the workspace is available, NEVER skip searching for real call sites and tests before proposing arguments.
+- NEVER skip searching for real call sites and tests before proposing arguments — the workspace is always available in this flow.
 - If tests exist for the target function or its immediate caller, inspect them before proposing benchmark inputs.
 - NEVER run benchmark tools before the user confirms the proposed arguments.
 - NEVER skip the wait step — always use `wait.js`, do not rely on estimating time.
-- Both `args` arrays must match exactly between original and any future optimized version for fair comparison.
-- If V8 extraction fails after 2 path attempts, fall back to asking the user for the code — do not loop.
 - Pass `isOptimized: false` — this is a baseline run, not a comparison.
