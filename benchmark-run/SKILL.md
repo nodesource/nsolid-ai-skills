@@ -68,25 +68,38 @@ Follow these steps to build `args` correctly:
 - Plain JS string that defines mock variables
 - The variable names here must match the names you added to `args`
 
-### 3. Stop and Ask the User to Confirm the Arguments
+#### `benchmarkConfig` — benchmark engine configuration
+- Controls how many times the benchmark executes and for how long
+- Default values:
+  - `repeatSuite`: 15 (number of suite runs — higher values improve statistical accuracy but take longer)
+  - `minSamples`: 10 (minimum samples required per run)
+  - `minTime`: 0.05 (minimum time per sample in seconds)
+  - `maxTime`: 0.5 (maximum time per sample in seconds)
+- These defaults are a good starting point. The user can modify them during the confirmation step.
 
-Before calling any benchmark tools, present the proposed `functionData` to the user for review.
+### 3. Stop and Ask the User to Confirm the Arguments and Configuration
+
+Before calling any benchmark tools, present the proposed `functionData` and `benchmarkConfig` to the user for review.
 
 Your confirmation message must include:
 - the target function and where you found it
 - the proposed `entryPoint`
 - the full `args`
 - the full `argSetupCode` if present
-- a short explanation of how those arguments were derived from real invocation sites and/or tests
+- the proposed `benchmarkConfig` values (repeatSuite, minSamples, minTime, maxTime) with a brief explanation of each
+- a short explanation of how the arguments were derived from real invocation sites and/or tests
 
 If you found relevant tests, mention which test file(s) or fixtures informed the argument shape.
 
-Then ask the user to confirm one of these actions:
-- approve the proposed arguments
-- ask you to regenerate them
+After presenting, explicitly offer to:
+- adjust the `benchmarkConfig` (e.g. increase repeatSuite for more statistical accuracy, or decrease it for faster runs)
+- approve the proposed arguments and configuration as-is
+- ask you to regenerate arguments
 - provide manual edits
 
-Do NOT call `run_benchmark`, `get_benchmark_result`, or any result-saving step until the user explicitly confirms the arguments.
+For example, if repeatSuite is set to 15 but the function is very fast, suggest increasing it. If the function is slow, suggest decreasing it to get results faster.
+
+Do NOT call `run_benchmark`, `get_benchmark_result`, or any result-saving step until the user explicitly confirms both the arguments and the configuration.
 
 ---
 
@@ -174,6 +187,7 @@ argSetupCode:
 Call `run_benchmark` with:
 - `functionData`: the object built in step 2 (`type`, `code`, `explanation`, `entryPoint`, `args`, and `argSetupCode` if needed)
 - `isOptimized: false`
+- If the MCP tool accepts it, also pass the user-confirmed `benchmarkConfig` as part of `functionData` (e.g. `functionData.benchmarkConfig`) or as a separate parameter. Include `repeatSuite`, `minSamples`, `minTime`, and `maxTime`.
 
 Note the returned `jobId`.
 
@@ -249,6 +263,16 @@ The table must include:
 - **Variance assessment**: whether the histogram shows high variance (high min/max spread suggests inconsistent performance)
 - **File path**: where the result was saved
 
+When variance is **high**, append a diagnostic paragraph below the table. Explain possible causes:
+- **V8 JIT compilation stages**: functions may run in interpreter, baseline, or optimized tiers during the same benchmark, causing sporadic slowdowns or speedups
+- **Garbage collection pauses**: if the function allocates memory, GC runs can introduce latency spikes in certain iterations
+- **External factors**: system load, CPU throttling, or background processes can influence individual samples
+- **Input sensitivity**: the function's performance may vary significantly with different argument values — consider testing a broader set of inputs
+
+Also recommend the user:
+- increase `repeatSuite` or `minSamples` to gather more data if the variance is due to measurement noise
+- inspect per-run ops/sec values in the saved JSON to see if variance is driven by individual outlier runs
+
 Example table format:
 
 | Metric | Value |
@@ -269,6 +293,6 @@ Example table format:
 
 - NEVER skip searching for real call sites and tests before proposing arguments — the workspace is always available in this flow.
 - If tests exist for the target function or its immediate caller, inspect them before proposing benchmark inputs.
-- NEVER run benchmark tools before the user confirms the proposed arguments.
+- NEVER run benchmark tools before the user confirms both the proposed arguments AND the benchmark configuration.
 - NEVER skip the wait step — always use `wait.js`, do not rely on estimating time.
 - Pass `isOptimized: false` — this is a baseline run, not a comparison.

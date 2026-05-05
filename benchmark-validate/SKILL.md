@@ -79,25 +79,39 @@ Follow these steps:
 - Plain JS string that defines mock variables
 - Must be identical between the original and optimized runs
 
+#### `benchmarkConfig` — benchmark engine configuration (shared by both runs)
+- Controls how many times each benchmark executes and for how long
+- Must be identical between the original and optimized runs — otherwise the comparison is invalid
+- Default values:
+  - `repeatSuite`: 15 (number of suite runs — higher values improve statistical accuracy but take longer)
+  - `minSamples`: 10 (minimum samples required per run)
+  - `minTime`: 0.05 (minimum time per sample in seconds)
+  - `maxTime`: 0.5 (maximum time per sample in seconds)
+- These defaults are a good starting point. The user can modify them during the confirmation step.
+
 ### 3. Stop and Ask the User to Confirm the Shared Benchmark Inputs
 
-Before calling any benchmark tools, present both `functionData` objects to the user for review.
+Before calling any benchmark tools, present both `functionData` objects and the proposed `benchmarkConfig` to the user for review.
 
 Your confirmation message must include:
 - the original and optimized functions being compared
 - the proposed shared `args`
 - the proposed shared `argSetupCode` if present
 - each entry point
+- the proposed shared `benchmarkConfig` values (repeatSuite, minSamples, minTime, maxTime) with a brief explanation of each
 - a short explanation of how the shared benchmark inputs were derived from real invocation sites and/or tests
 
 If relevant tests were found, mention which test file(s), fixtures, or helper builders influenced the proposed input shape.
 
-Then ask the user to confirm one of these actions:
-- approve the proposed arguments
-- ask you to regenerate them
+After presenting, explicitly offer to:
+- adjust the `benchmarkConfig` (e.g. increase repeatSuite for more statistical accuracy, or decrease it for faster runs)
+- approve the proposed arguments and configuration as-is
+- ask you to regenerate arguments
 - provide manual edits
 
-Do NOT call `run_benchmark`, `get_benchmark_result`, `compare_benchmarks`, or any result-saving step until the user explicitly confirms the arguments.
+For example, if repeatSuite is set to 15 but the function is very fast, suggest increasing it. If the function is slow, suggest decreasing it to get results faster.
+
+Do NOT call `run_benchmark`, `get_benchmark_result`, `compare_benchmarks`, or any result-saving step until the user explicitly confirms both the arguments and the configuration.
 
 ---
 
@@ -185,6 +199,7 @@ argSetupCode:
 Call `run_benchmark` with:
 - `functionData`: `{ type, code, explanation, entryPoint, args, argSetupCode? }` for the **original**
 - `isOptimized: false`
+- If the MCP tool accepts it, also pass the user-confirmed `benchmarkConfig` as part of `functionData` (e.g. `functionData.benchmarkConfig`) or as a separate parameter. Include `repeatSuite`, `minSamples`, `minTime`, and `maxTime`.
 
 Note the returned `jobId` as `originalJobId`.
 
@@ -218,8 +233,9 @@ benchmark does not clear the effectiveness threshold on the first try.
 
 For each optimized attempt:
 - Build optimized `functionData`: `{ type, code, explanation, entryPoint, args, argSetupCode? }`
-- Use the **exact same** `args` and `argSetupCode` as the original
+- Use the **exact same** `args`, `argSetupCode`, and `benchmarkConfig` as the original
 - Call `run_benchmark` with `isOptimized: true`
+- If the MCP tool accepts it, also pass the user-confirmed `benchmarkConfig` as part of `functionData` or as a separate parameter — must be identical to what was used for the original run
 - Note the returned `jobId` as `optimizedJobId`
 
 ### 8. Wait
@@ -323,6 +339,16 @@ The table must include:
 - **Variance assessment**: whether either histogram shows high variance
 - **File path**: where the comparison result was saved
 
+When either side shows **high variance**, append a diagnostic paragraph below the table. Explain possible causes:
+- **V8 JIT compilation stages**: functions may run in interpreter, baseline, or optimized tiers during the same benchmark, causing sporadic slowdowns or speedups
+- **Garbage collection pauses**: if the function allocates memory, GC runs can introduce latency spikes in certain iterations
+- **External factors**: system load, CPU throttling, or background processes can influence individual samples
+- **Input sensitivity**: the function's performance may vary significantly with different argument values — consider testing a broader set of inputs
+
+Also recommend the user:
+- increase `repeatSuite` or `minSamples` to gather more data if the variance is due to measurement noise
+- inspect per-run ops/sec values in the saved JSON to see if variance is driven by individual outlier runs
+
 Example table format:
 
 | Metric | Original | Optimized |
@@ -367,9 +393,9 @@ marker entirely — the host extension will not offer the apply action.
 
 - When the workspace is available, NEVER skip searching for real call sites and tests before proposing arguments.
 - If tests exist for the original function or its immediate caller, inspect them before proposing benchmark inputs.
-- NEVER run benchmark tools before the user confirms the proposed shared arguments.
-- You MUST use the exact same `args` and `argSetupCode` for both runs — otherwise the comparison is statistically invalid.
-- NEVER use different `args` or different `argSetupCode` between the original and optimized runs.
+- NEVER run benchmark tools before the user confirms both the proposed shared arguments AND the benchmark configuration.
+- You MUST use the exact same `args`, `argSetupCode`, and `benchmarkConfig` for both runs — otherwise the comparison is statistically invalid.
+- NEVER use different `args`, `argSetupCode`, or `benchmarkConfig` between the original and optimized runs.
 - NEVER skip the wait steps — always use `wait.js`, do not rely on estimating time.
 - A fix is not a fix until `compare_benchmarks` returns `"optimization_effective"`.
 - NEVER poll immediately after submitting a benchmark — always wait first.
