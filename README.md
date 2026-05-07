@@ -7,20 +7,20 @@ Production-ready AI skills that transform N|Solid MCP data into automated invest
 Install any skill into your project using the [Vercel Skills CLI](https://vercel.com/blog/agent-skills-explained-an-faq):
 
 ```bash
-npx skills@latest add NodeSource/nsolid-ai-skills/analyze-vulnerabilities
-npx skills@latest add NodeSource/nsolid-ai-skills/generate-sbom
-npx skills@latest add NodeSource/nsolid-ai-skills/audit-dependencies
-npx skills@latest add NodeSource/nsolid-ai-skills/analyze-event
-npx skills@latest add NodeSource/nsolid-ai-skills/analyze-asset
-npx skills@latest add NodeSource/nsolid-ai-skills/analyze-cpu
-npx skills@latest add NodeSource/nsolid-ai-skills/analyze-memory
-npx skills@latest add NodeSource/nsolid-ai-skills/advanced-memory-leak-hunter
-npx skills@latest add NodeSource/nsolid-ai-skills/benchmark-run
-npx skills@latest add NodeSource/nsolid-ai-skills/benchmark-validate
-npx skills@latest add NodeSource/nsolid-ai-skills/analyze-tracing
-npx skills@latest add NodeSource/nsolid-ai-skills/node-upgrade
-npx skills@latest add NodeSource/nsolid-ai-skills/upgrade-package
-npx skills@latest add NodeSource/nsolid-ai-skills/replace-package
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-analyze-vulnerabilities
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-generate-sbom
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-audit-dependencies
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-analyze-event
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-analyze-asset
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-analyze-cpu
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-analyze-memory
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-advanced-memory-leak-hunter
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-benchmark-run
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-benchmark-validate
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-analyze-tracing
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-node-upgrade
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-upgrade-package
+npx skills@latest add NodeSource/nsolid-ai-skills/ns-replace-package
 ```
 
 Or manually copy the `<skill-name>/SKILL.md` file into your project's `.claude/skills/` directory.
@@ -31,56 +31,58 @@ Or manually copy the `<skill-name>/SKILL.md` file into your project's `.claude/s
 
 | Skill | Description |
 |-------|-------------|
-| **analyze-vulnerabilities** | Scans running production memory for actively-exploitable CVEs using live N|Solid data |
-| **generate-sbom** | Generates SPDX/JSON Software Bill of Materials from live running processes |
-| **audit-dependencies** | Audits direct and transitive npm dependencies and produces an NCM-grounded remediation plan |
+| **ns-analyze-vulnerabilities** | Scans running production memory for actively-exploitable CVEs using live N|Solid data |
+| **ns-generate-sbom** | Generates SPDX/JSON Software Bill of Materials from live running processes |
+| **ns-audit-dependencies** | Audits direct and transitive npm dependencies and produces an NCM-grounded remediation plan |
 
 ### Diagnostics
 
 | Skill | Description |
 |-------|-------------|
-| **analyze-event** | Investigates an existing N|Solid event with event-type-aware MCP tool usage and correlated evidence |
-| **analyze-asset** | Analyzes an existing asset from an asset ID or local file path without capturing a new profile |
+| **ns-analyze-event** | Investigates an existing N|Solid event with event-type-aware MCP tool usage and correlated evidence |
+| **ns-analyze-asset** | Analyzes an existing asset from an asset ID or local file path without capturing a new profile |
 
 ### Performance
 
 | Skill | Description |
 |-------|-------------|
-| **analyze-cpu** | Captures V8 CPU profiles, extracts live source code, and identifies bottleneck functions |
-| **analyze-memory** | Diagnoses memory issues via real-time heap sampling and snapshot analysis |
-| **advanced-memory-leak-hunter** | Multi-phase baseline-vs-peak delta analysis for elusive memory leaks |
-| **benchmark-run** | Benchmarks a single Node.js function to measure throughput (ops/sec) using live V8 source or user-provided code |
-| **benchmark-validate** | Scientifically controlled A/B benchmarks with statistical validation (p-value, ops/sec) |
+| **ns-analyze-cpu** | Captures V8 CPU profiles, extracts live source code, and identifies bottleneck functions |
+| **ns-analyze-memory** | Diagnoses memory issues via real-time heap sampling and snapshot analysis |
+| **ns-advanced-memory-leak-hunter** | Multi-phase baseline-vs-peak delta analysis for elusive memory leaks |
+| **ns-benchmark-run** | Benchmarks a single Node.js function to measure throughput (ops/sec) using live V8 source or user-provided code |
+| **ns-benchmark-validate** | Scientifically controlled A/B benchmarks with statistical validation (p-value, ops/sec) |
 
 ### Architecture
 
 | Skill | Description |
 |-------|-------------|
-| **analyze-tracing** | Maps distributed OpenTelemetry spans to diagnose microservice latency and topology issues |
+| **ns-analyze-tracing** | Maps distributed OpenTelemetry spans to diagnose microservice latency and topology issues |
 
 ### Dependency Management
 
 | Skill | Description |
 |-------|-------------|
-| **upgrade-package** | Advises on upgrading a specific npm package with risk assessment and rollback guidance |
-| **replace-package** | Compares realistic npm package alternatives and provides migration guidance grounded in NCM data |
+| **ns-upgrade-package** | Advises on upgrading a specific npm package with risk assessment and rollback guidance |
+| **ns-replace-package** | Compares realistic npm package alternatives and provides migration guidance grounded in NCM data |
 
 ### Runtime
 
 | Skill | Description |
 |-------|-------------|
-| **node-upgrade** | Recommends the right Node.js upgrade target using authoritative release schedule data and project version detection |
+| **ns-node-upgrade** | Recommends the right Node.js upgrade target using authoritative release schedule data and project version detection |
 
 ## Scripts
 
-Helper scripts used internally by skills to bridge MCP data and the local filesystem.
+Helper scripts used internally by skills to bridge MCP data and the local
+filesystem. These helpers are bundled inside the skill directories that
+reference them.
 
 ### fetch-asset.cjs
 
 Downloads a full N|Solid asset (CPU profile, heap snapshot, or heap sampling) from the console API and saves it to `.nsolid/assets/`. Skills invoke this after triggering a profile/snapshot so the file is available for local tooling (e.g. Chrome DevTools, VS Code memory profiler).
 
 ```bash
-node fetch-asset.cjs <assetId> <assetType> [appName]
+node "<skill-dir>/fetch-asset.cjs" <assetId> <assetType> [appName]
 ```
 
 | Argument | Description |
@@ -93,8 +95,17 @@ Output: `.nsolid/assets/<assetType>-<appName>-<assetIdPrefix>.<ext>`
 
 Reads `nsolid.apiBaseUrl` and `nsolid.authToken` from `.vscode/settings.json` in the workspace root.
 
-Benchmark result helpers also always write to the project-root `.nsolid/benchmarks/`
-directory, never beside a skill file or inside an `agents/` folder.
+### save-report.cjs
+
+Persists a markdown report to `.nsolid/assets/` and updates
+`.nsolid/assets/reports-index.json` so the report can be discovered by host
+extensions or other local tooling.
+
+```bash
+node "<skill-dir>/save-report.cjs" <type> <title> <markdown-file> [appName]
+```
+
+Output: `.nsolid/assets/<type>-<timestamp>.md`
 
 ## Compatibility
 
@@ -112,4 +123,4 @@ All skills require the **N|Solid Console MCP server** to be configured and conne
 
 ## Architecture
 
-Each skill is independent and self-contained — no delegation chains or sub-skill loading required. The AI assistant acts as the natural orchestrator, chaining skills together based on context. For example, after `analyze-cpu` identifies a bottleneck and proposes a fix, it directs the assistant to invoke `benchmark-validate` to prove the improvement.
+Each skill is independent and self-contained — no delegation chains or sub-skill loading required. The AI assistant acts as the natural orchestrator, chaining skills together based on context. For example, after `ns-analyze-cpu` identifies a bottleneck and proposes a fix, it directs the assistant to invoke `ns-benchmark-validate` to prove the improvement.

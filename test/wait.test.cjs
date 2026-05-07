@@ -7,12 +7,12 @@ const path = require('node:path')
 
 const ROOT = path.resolve(__dirname, '..')
 const WAIT_SCRIPTS = [
-  path.join(ROOT, 'advanced-memory-leak-hunter', 'wait.js'),
-  path.join(ROOT, 'analyze-asset', 'wait.js'),
-  path.join(ROOT, 'analyze-cpu', 'wait.cjs'),
-  path.join(ROOT, 'analyze-memory', 'wait.js'),
-  path.join(ROOT, 'benchmark-run', 'wait.js'),
-  path.join(ROOT, 'benchmark-validate', 'wait.js')
+  path.join(ROOT, 'ns-advanced-memory-leak-hunter', 'wait.cjs'),
+  path.join(ROOT, 'ns-analyze-asset', 'wait.cjs'),
+  path.join(ROOT, 'ns-analyze-cpu', 'wait.cjs'),
+  path.join(ROOT, 'ns-analyze-memory', 'wait.cjs'),
+  path.join(ROOT, 'ns-benchmark-run', 'wait.cjs'),
+  path.join(ROOT, 'ns-benchmark-validate', 'wait.cjs')
 ]
 
 function run (script, args, timeout = 5_000) {

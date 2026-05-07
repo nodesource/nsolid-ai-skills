@@ -8,7 +8,7 @@ const path = require('node:path')
 const { runCliScript } = require('./helpers/run-cli.cjs')
 
 const ROOT = path.resolve(__dirname, '..')
-const SCRIPT = path.join(ROOT, 'analyze-cpu', 'workspace-delta.cjs')
+const SCRIPT = path.join(ROOT, 'ns-analyze-cpu', 'workspace-delta.cjs')
 
 async function withTempWorkspace (fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-delta-'))

@@ -8,8 +8,9 @@ const os = require('node:os')
 const path = require('node:path')
 
 const FETCH_ASSET_SCRIPTS = [
-  path.resolve(__dirname, '..', 'analyze-cpu', 'fetch-asset.cjs'),
-  path.resolve(__dirname, '..', 'analyze-memory', 'fetch-asset.cjs')
+  path.resolve(__dirname, '..', 'ns-advanced-memory-leak-hunter', 'fetch-asset.cjs'),
+  path.resolve(__dirname, '..', 'ns-analyze-cpu', 'fetch-asset.cjs'),
+  path.resolve(__dirname, '..', 'ns-analyze-memory', 'fetch-asset.cjs')
 ]
 const ROOT = path.resolve(__dirname, '..')
 const ASSETS_DIR = path.join(ROOT, '.nsolid', 'assets')

@@ -6,7 +6,7 @@ const path = require('node:path')
 const { runCliScript } = require('./helpers/run-cli.cjs')
 
 const ROOT = path.resolve(__dirname, '..')
-const SCRIPT = path.join(ROOT, 'node-upgrade', 'fetch-node-releases.cjs')
+const SCRIPT = path.join(ROOT, 'ns-node-upgrade', 'fetch-node-releases.cjs')
 
 function outputOf (result) {
   return `${result.stdout}${result.stderr}`

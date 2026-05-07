@@ -8,7 +8,7 @@ const os = require('node:os')
 const path = require('node:path')
 
 const ROOT = path.resolve(__dirname, '..')
-const SCRIPT = path.join(ROOT, 'audit-dependencies', 'collect-dependencies.cjs')
+const SCRIPT = path.join(ROOT, 'ns-audit-dependencies', 'collect-dependencies.cjs')
 const CAPTURE_RUNNER = path.join(__dirname, 'helpers', 'capture-cli-runner.cjs')
 
 async function withTempProject (fn) {

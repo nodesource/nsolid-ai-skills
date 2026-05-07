@@ -32,7 +32,7 @@ test('every SKILL.md has front matter with a matching name and a description', (
   }
 })
 
-test('same-directory helper commands in SKILL.md files point to real files', () => {
+test('same-directory helper commands in SKILL.md files point to real .cjs files', () => {
   const commandPattern = /node "<skill-dir>\/([^"\n]+)"/g
 
   for (const dirName of SKILL_DIRS) {
@@ -41,12 +41,18 @@ test('same-directory helper commands in SKILL.md files point to real files', () 
 
     for (const match of content.matchAll(commandPattern)) {
       const relativeHelper = match[1]
-      if (relativeHelper.includes('..')) {
-        continue
-      }
-
+      assert.ok(!relativeHelper.includes('..'), `${dirName}/SKILL.md must not escape its own directory: ${relativeHelper}`)
+      assert.ok(relativeHelper.endsWith('.cjs'), `${dirName}/SKILL.md helper must end with .cjs: ${relativeHelper}`)
       const helperPath = path.join(skillDir, relativeHelper)
       assert.ok(fs.existsSync(helperPath), `${dirName}/SKILL.md references missing helper ${relativeHelper}`)
     }
+  }
+})
+
+test('benchmark skill docs do not reference benchmark JSON persistence helpers', () => {
+  for (const dirName of ['ns-benchmark-run', 'ns-benchmark-validate']) {
+    const content = readSkill(dirName)
+    assert.ok(!content.includes('write-result.'), `${dirName}/SKILL.md must not reference write-result helpers`)
+    assert.ok(!content.includes('.nsolid/benchmarks/'), `${dirName}/SKILL.md must not reference .nsolid/benchmarks/`)
   }
 })
